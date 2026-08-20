@@ -1,0 +1,17 @@
+{% extends "credentialing/base.html" %}
+{% block title %}Login{% endblock %}
+{% block content %}
+<div style="max-width:380px;margin:9vh auto 0;">
+  <div class="card" style="padding:30px;">
+    <h1 style="margin-bottom:4px;">Physics Credentialing</h1>
+    <p class="text-muted text-sm" style="margin-bottom:22px;">Northside Hospital — Radiation Oncology</p>
+    <form method="post">{% csrf_token %}
+      <label class="text-muted text-sm">Username</label>
+      <input type="text" name="username" class="form-control" style="margin:5px 0 14px;" autofocus>
+      <label class="text-muted text-sm">Password</label>
+      <input type="password" name="password" class="form-control" style="margin:5px 0 20px;">
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">Sign in</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

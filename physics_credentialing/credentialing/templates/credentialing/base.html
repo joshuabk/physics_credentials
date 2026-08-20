@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Physics Credentialing{% endblock %} — Northside Radiation Oncology</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0e1116;--card:#161b22;--card-2:#1b2129;--border:#242c37;--border-2:#2e3844;
+--text:#e6e9ee;--muted:#8b96a5;--teal:#2dd4bf;--green:#4ade80;--amber:#fbbf24;--red:#f87171;
+--purple:#a78bfa;--blue:#60a5fa;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:14px;}
+a{color:var(--teal);}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;
+border-bottom:1px solid var(--border);background:var(--card);}
+.brand{font-weight:700;font-size:15px;color:var(--text);text-decoration:none;}
+.brand span{color:var(--teal);}
+.nav{display:flex;gap:6px;}
+.nav a{color:var(--muted);text-decoration:none;padding:7px 13px;border-radius:8px;font-weight:500;}
+.nav a.active,.nav a:hover{color:var(--text);background:var(--card-2);}
+.container{max-width:1240px;margin:0 auto;padding:26px 28px 60px;}
+.page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.4rem;gap:12px;flex-wrap:wrap;}
+h1{font-size:21px;font-weight:700;}
+h2{font-size:15px;font-weight:600;}
+.text-muted{color:var(--muted);} .text-sm{font-size:12.5px;} .mt-1{margin-top:4px;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:1.2rem;overflow:hidden;}
+.card-title{padding:13px 18px;border-bottom:1px solid var(--border);font-weight:600;display:flex;justify-content:space-between;align-items:center;}
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;}
+th{color:var(--muted);text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;
+padding:10px 14px;border-bottom:1px solid var(--border);white-space:nowrap;}
+td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:rgba(255,255,255,0.015);}
+.btn{display:inline-flex;align-items:center;gap:6px;border:none;border-radius:8px;padding:8px 14px;
+font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;font-family:inherit;}
+.btn-primary{background:var(--teal);color:#06281f;}
+.btn-ghost{background:var(--card-2);color:var(--text);border:1px solid var(--border-2);}
+.btn-danger{background:rgba(248,113,113,.12);color:var(--red);border:1px solid rgba(248,113,113,.3);}
+.btn-sm{padding:5px 10px;font-size:12px;}
+.badge{display:inline-block;padding:3px 9px;border-radius:99px;font-size:11.5px;font-weight:600;white-space:nowrap;}
+.badge-credentialed{background:rgba(74,222,128,.13);color:var(--green);}
+.badge-in_progress{background:rgba(96,165,250,.13);color:var(--blue);}
+.badge-not_started{background:rgba(139,150,165,.14);color:var(--muted);}
+.badge-not_applicable{background:rgba(139,150,165,.09);color:#5c6672;}
+.badge-expired{background:rgba(248,113,113,.13);color:var(--red);}
+.badge-expiring{background:rgba(251,191,36,.13);color:var(--amber);}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:1.4rem;}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;}
+.stat-label{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;font-weight:600;}
+.stat-value{font-size:24px;font-weight:700;margin-top:5px;font-family:'DM Mono',monospace;}
+.progress-wrap{background:var(--card-2);border-radius:99px;height:7px;overflow:hidden;min-width:90px;}
+.progress-bar{height:100%;border-radius:99px;background:var(--teal);}
+.progress-bar.amber{background:var(--amber);} .progress-bar.red{background:var(--red);} .progress-bar.green{background:var(--green);}
+.form-control{background:var(--card-2);border:1px solid var(--border-2);border-radius:8px;color:var(--text);
+padding:8px 11px;font-size:13px;font-family:inherit;outline:none;width:100%;}
+select.form-control{width:auto;}
+.messages{list-style:none;margin-bottom:1rem;}
+.messages li{padding:10px 15px;border-radius:9px;margin-bottom:6px;font-weight:500;}
+.messages .success{background:rgba(74,222,128,.1);color:var(--green);border:1px solid rgba(74,222,128,.25);}
+.messages .error{background:rgba(248,113,113,.1);color:var(--red);border:1px solid rgba(248,113,113,.25);}
+.avatar{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+font-weight:700;font-size:12.5px;background:rgba(45,212,191,.15);color:var(--teal);flex-shrink:0;}
+.flex{display:flex;} .items-center{align-items:center;} .gap-2{gap:8px;} .gap-3{gap:12px;}
+.empty-state{color:var(--muted);}
+.cat-header{padding:12px 18px;background:var(--card-2);font-weight:700;font-size:13.5px;border-bottom:1px solid var(--border);}
+.sub-header{padding:8px 18px;color:var(--teal);font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:700;border-bottom:1px solid var(--border);background:rgba(45,212,191,.03);}
+.dot{width:13px;height:13px;border-radius:4px;display:inline-block;}
+.dot-credentialed{background:var(--green);} .dot-in_progress{background:var(--blue);}
+.dot-not_started{background:#39424e;} .dot-not_applicable{background:transparent;border:1px solid #39424e;}
+.dot-expired{background:var(--red);}
+</style>
+</head>
+<body>
+{% if user.is_authenticated %}
+<div class="topbar">
+  <a href="/" class="brand">Northside <span>Physics Credentialing</span></a>
+  <div class="nav">
+    <a href="/" {% if request.path == '/' %}class="active"{% endif %}>Dashboard</a>
+    <a href="/physicists/" {% if '/physicists' in request.path %}class="active"{% endif %}>Physicists</a>
+    <a href="/matrix/" {% if '/matrix' in request.path %}class="active"{% endif %}>Matrix</a>
+  </div>
+  <div class="flex items-center gap-3">
+    <span class="text-muted text-sm">{{ user.username }}</span>
+    <a href="/logout/" class="btn btn-ghost btn-sm">Log out</a>
+  </div>
+</div>
+{% endif %}
+<div class="container">
+{% if messages %}<ul class="messages">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>{% endif %}
+{% block content %}{% endblock %}
+</div>
+</body>
+</html>

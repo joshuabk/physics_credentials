@@ -1,0 +1,46 @@
+{% extends "credentialing/base.html" %}
+{% block title %}Matrix{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Credentialing Matrix</h1><p class="text-muted text-sm mt-1">Skills × physicists at a glance</p></div>
+  <div class="flex gap-2">
+    <form method="get" class="flex gap-2">
+      <select name="category" class="form-control">
+        <option value="">All categories</option>
+        {% for c in all_categories %}<option value="{{ c.pk }}" {% if category_filter == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn btn-ghost">Filter</button>
+    </form>
+    <a href="/matrix/export/" class="btn btn-primary">Export CSV</a>
+  </div>
+</div>
+
+<div class="text-muted text-sm" style="margin-bottom:12px;display:flex;gap:16px;flex-wrap:wrap;">
+  <span><span class="dot dot-credentialed"></span> Credentialed</span>
+  <span><span class="dot dot-in_progress"></span> In progress</span>
+  <span><span class="dot dot-expired"></span> Expired</span>
+  <span><span class="dot dot-not_started"></span> Not started</span>
+  <span><span class="dot dot-not_applicable"></span> N/A</span>
+</div>
+
+{% for c in categories %}
+<div class="card">
+  <div class="cat-header">{{ c.category.name }}</div>
+  <div class="table-wrap"><table>
+    <thead><tr><th style="min-width:260px;">Skill</th>
+      {% for p in physicists %}<th style="text-align:center;" title="{{ p }}">{{ p.first_name.0 }}{{ p.last_name.0 }}</th>{% endfor %}
+    </tr></thead>
+    <tbody>
+    {% for row in c.rows %}
+      <tr>
+        <td>{% if row.skill.subcategory %}<span class="text-muted text-sm">{{ row.skill.subcategory }} · </span>{% endif %}{{ row.skill.name }}</td>
+        {% for cell in row.cells %}<td style="text-align:center;"><span class="dot dot-{{ cell }}"></span></td>{% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% empty %}
+<div class="card" style="padding:2rem;text-align:center;" ><span class="empty-state">No skills found.</span></div>
+{% endfor %}
+{% endblock %}

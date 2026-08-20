@@ -1,0 +1,33 @@
+{% extends "credentialing/base.html" %}
+{% block title %}Physicists{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Physicists</h1><p class="text-muted text-sm mt-1">Radiation oncology medical physics group</p></div>
+  {% if is_admin %}<a href="/physicists/add/" class="btn btn-primary">+ Add Physicist</a>{% endif %}
+</div>
+<div class="card"><div class="table-wrap"><table>
+  <thead><tr><th>Physicist</th><th>Email</th><th>Credentialed</th><th>Completion</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><div class="flex items-center gap-3">
+        <div class="avatar">{{ r.physicist.first_name.0 }}{{ r.physicist.last_name.0 }}</div>
+        <div><a href="/physicists/{{ r.physicist.pk }}/" style="color:var(--text);text-decoration:none;font-weight:600;">{{ r.physicist }}</a>
+        <div class="text-muted text-sm">{{ r.physicist.title|default:"Medical Physicist" }}</div></div>
+      </div></td>
+      <td class="text-muted">{{ r.physicist.email }}</td>
+      <td style="font-family:'DM Mono',monospace;"><span style="color:var(--green);">{{ r.credentialed }}</span><span class="text-muted"> / {{ r.total }}</span></td>
+      <td style="width:180px;"><div class="flex items-center gap-2">
+        <div class="progress-wrap" style="flex:1;"><div class="progress-bar {% if r.percent >= 90 %}green{% elif r.percent < 50 %}amber{% endif %}" style="width:{{ r.percent }}%"></div></div>
+        <span style="font-family:'DM Mono',monospace;font-size:12.5px;">{{ r.percent }}%</span></div></td>
+      <td><div class="flex gap-2">
+        <a href="/physicists/{{ r.physicist.pk }}/" class="btn btn-ghost btn-sm">Checklist</a>
+        {% if is_admin %}<form method="post" action="/physicists/{{ r.physicist.pk }}/deactivate/" onsubmit="return confirm('Deactivate {{ r.physicist }}?')">{% csrf_token %}<button class="btn btn-danger btn-sm">Deactivate</button></form>{% endif %}
+      </div></td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="5" class="empty-state" style="text-align:center;padding:2rem;">No physicists yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

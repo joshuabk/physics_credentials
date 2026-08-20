@@ -1,0 +1,78 @@
+{% extends "credentialing/base.html" %}
+{% block title %}{{ physicist }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div class="flex items-center gap-3">
+    <div class="avatar" style="width:44px;height:44px;font-size:15px;">{{ physicist.first_name.0 }}{{ physicist.last_name.0 }}</div>
+    <div>
+      <h1>{{ physicist }}</h1>
+      <p class="text-muted text-sm mt-1">{{ physicist.title|default:"Medical Physicist" }} · {{ physicist.email }}</p>
+    </div>
+  </div>
+  <div style="text-align:right;">
+    <div style="font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:var(--teal);">{{ percent }}%</div>
+    <div class="text-muted text-sm">{{ summary.credentialed }} of {{ summary.total }} credentialed
+      {% if summary.expired %} · <span style="color:var(--red);">{{ summary.expired }} expired</span>{% endif %}</div>
+  </div>
+</div>
+
+{% if not can_edit %}
+<p class="text-muted text-sm" style="margin-bottom:1rem;">Read-only view — only administrators or {{ physicist.first_name }} can update this checklist.</p>
+{% endif %}
+
+{% for c in categories %}
+<div class="card">
+  <div class="cat-header">{{ c.category.name }}</div>
+  {% for g in c.groups %}
+    {% if g.subcategory %}<div class="sub-header">{{ g.subcategory }}</div>{% endif %}
+    <div class="table-wrap"><table>
+      <tbody>
+      {% for row in g.skills %}
+        <tr id="skill-{{ row.skill.pk }}">
+          <td style="width:34%;">
+            <span style="font-weight:500;">{{ row.skill.name }}</span>
+            {% if row.skill.as_applicable %}<span class="text-muted text-sm"> (as applicable)</span>{% endif %}
+            {% if row.skill.renewal_months %}
+              <span class="badge" style="background:rgba(167,139,250,.12);color:var(--purple);margin-left:6px;">
+                {% if row.skill.renewal_months == 12 %}annual{% elif row.skill.renewal_months == 3 %}quarterly{% else %}every {{ row.skill.renewal_months }} mo{% endif %}
+              </span>
+            {% endif %}
+          </td>
+          <td style="width:12%;">
+            <span class="badge badge-{{ row.status }}">
+              {% if row.status == 'expired' %}Expired{% elif row.status == 'credentialed' %}Credentialed{% elif row.status == 'in_progress' %}In Progress{% elif row.status == 'not_applicable' %}N/A{% else %}Not Started{% endif %}
+            </span>
+            {% if row.credential and row.credential.expires_soon %}<div class="badge badge-expiring" style="margin-top:4px;">renews {{ row.credential.expiration_date|date:"M j" }}</div>{% endif %}
+          </td>
+          <td style="width:14%;" class="text-muted text-sm">
+            {% if row.credential.date_completed %}{{ row.credential.date_completed|date:"M j, Y" }}
+              {% if row.credential.expiration_date %}<br>exp {{ row.credential.expiration_date|date:"M j, Y" }}{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td style="width:12%;" class="text-muted text-sm">{{ row.credential.verified_by|default:"—" }}</td>
+          <td>
+            {% if can_edit %}
+            <form method="post" action="/physicists/{{ physicist.pk }}/skills/{{ row.skill.pk }}/update/" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+              {% csrf_token %}
+              <select name="status" class="form-control" style="padding:5px 8px;font-size:12px;">
+                {% for value, label in status_choices %}
+                <option value="{{ value }}" {% if row.credential and row.credential.status == value %}selected{% elif not row.credential and value == 'not_started' %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+              <input type="date" name="date_completed" value="{{ row.credential.date_completed|date:'Y-m-d' }}" class="form-control" style="width:135px;padding:5px 8px;font-size:12px;">
+              <input type="text" name="verified_by" value="{{ row.credential.verified_by }}" placeholder="Verified by" class="form-control" style="width:110px;padding:5px 8px;font-size:12px;">
+              <input type="text" name="notes" value="{{ row.credential.notes }}" placeholder="Notes" class="form-control" style="width:120px;padding:5px 8px;font-size:12px;">
+              <button type="submit" class="btn btn-ghost btn-sm">Save</button>
+            </form>
+            {% else %}
+            <span class="text-muted text-sm">{{ row.credential.notes|default:"" }}</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  {% endfor %}
+</div>
+{% endfor %}
+{% endblock %}

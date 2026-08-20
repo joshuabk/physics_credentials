@@ -1,0 +1,67 @@
+{% extends "credentialing/base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Credentialing Dashboard</h1>
+    <p class="text-muted text-sm mt-1">Skill credentialing status for the medical physics group</p>
+  </div>
+  {% if my_physicist %}<a href="/physicists/{{ my_physicist.pk }}/" class="btn btn-primary">My Checklist</a>{% endif %}
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card"><div class="stat-label">Physicists</div><div class="stat-value">{{ summaries|length }}</div></div>
+  <div class="stat-card"><div class="stat-label">Skills Tracked</div><div class="stat-value">{{ total_skills }}</div></div>
+  <div class="stat-card"><div class="stat-label">Needs Attention</div>
+    <div class="stat-value" style="color:{% if attention_count %}var(--amber){% else %}var(--green){% endif %};">{{ attention_count }}</div>
+    <div class="text-muted text-sm">expired or expiring credentials</div></div>
+</div>
+
+<div class="card">
+  <div class="card-title">Group Progress</div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Physicist</th><th>Credentialed</th><th>In Progress</th><th>Not Started</th><th>Expired</th><th style="width:180px;">Completion</th></tr></thead>
+    <tbody>
+    {% for s in summaries %}
+      <tr>
+        <td><div class="flex items-center gap-3">
+          <div class="avatar">{{ s.physicist.first_name.0 }}{{ s.physicist.last_name.0 }}</div>
+          <div><a href="/physicists/{{ s.physicist.pk }}/" style="color:var(--text);text-decoration:none;font-weight:600;">{{ s.physicist }}</a>
+          <div class="text-muted text-sm">{{ s.physicist.title|default:"Medical Physicist" }}</div></div>
+        </div></td>
+        <td style="font-family:'DM Mono',monospace;color:var(--green);">{{ s.credentialed }}</td>
+        <td style="font-family:'DM Mono',monospace;color:var(--blue);">{{ s.in_progress }}</td>
+        <td style="font-family:'DM Mono',monospace;color:var(--muted);">{{ s.not_started }}</td>
+        <td>{% if s.expired %}<span class="badge badge-expired">{{ s.expired }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td><div class="flex items-center gap-2">
+          <div class="progress-wrap" style="flex:1;"><div class="progress-bar {% if s.percent >= 90 %}green{% elif s.percent >= 50 %}{% else %}amber{% endif %}" style="width:{{ s.percent }}%"></div></div>
+          <span style="font-family:'DM Mono',monospace;font-size:12.5px;">{{ s.percent }}%</span>
+        </div></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" class="empty-state" style="text-align:center;padding:2rem;">No physicists yet.{% if is_admin %} <a href="/physicists/add/">Add one</a>.{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card">
+  <div class="card-title"><span>Expired &amp; Expiring Credentials</span><span class="text-muted text-sm">renewals due within 30 days</span></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Physicist</th><th>Skill</th><th>Completed</th><th>Expires</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for a in attention %}
+      <tr>
+        <td><a href="/physicists/{{ a.credential.physicist.pk }}/" style="color:var(--text);text-decoration:none;font-weight:500;">{{ a.credential.physicist }}</a></td>
+        <td>{{ a.credential.skill.name }}</td>
+        <td class="text-muted">{{ a.credential.date_completed|date:"M j, Y" }}</td>
+        <td style="font-family:'DM Mono',monospace;">{{ a.when|date:"M j, Y" }}</td>
+        <td>{% if a.kind == 'expired' %}<span class="badge badge-expired">Expired</span>{% else %}<span class="badge badge-expiring">Expiring soon</span>{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" class="empty-state" style="text-align:center;padding:1.6rem;">Nothing due — all recurring trainings are current. ✓</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}
