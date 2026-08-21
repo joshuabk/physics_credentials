@@ -74,17 +74,22 @@ font-weight:700;font-size:12.5px;background:rgba(45,212,191,.15);color:var(--tea
 </style>
 </head>
 <body>
-{% if user.is_authenticated %}
+{% if user.is_authenticated or not login_enabled %}
 <div class="topbar">
   <a href="/" class="brand">Northside <span>Physics Credentialing</span></a>
   <div class="nav">
     <a href="/" {% if request.path == '/' %}class="active"{% endif %}>Dashboard</a>
     <a href="/physicists/" {% if '/physicists' in request.path %}class="active"{% endif %}>Physicists</a>
     <a href="/matrix/" {% if '/matrix' in request.path %}class="active"{% endif %}>Matrix</a>
+    <a href="/settings/" {% if '/settings' in request.path %}class="active"{% endif %}>Settings</a>
   </div>
   <div class="flex items-center gap-3">
+    {% if user.is_authenticated %}
     <span class="text-muted text-sm">{{ user.username }}</span>
     <a href="/logout/" class="btn btn-ghost btn-sm">Log out</a>
+    {% else %}
+    <span class="text-muted text-sm">Login off</span>
+    {% endif %}
   </div>
 </div>
 {% endif %}

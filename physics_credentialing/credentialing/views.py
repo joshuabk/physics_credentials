@@ -9,6 +9,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
 from .models import Credential, Physicist, Skill, SkillCategory, UserProfile
+from .site_settings import login_enabled, set_setting
 
 STATUS_ORDER = ['credentialed', 'in_progress', 'expired', 'not_started', 'not_applicable']
 
@@ -18,7 +19,7 @@ STATUS_ORDER = ['credentialed', 'in_progress', 'expired', 'not_started', 'not_ap
 def login_required_(view):
     @wraps(view)
     def wrapper(request, *args, **kwargs):
-        if not request.user.is_authenticated:
+        if login_enabled() and not request.user.is_authenticated:
             return redirect('login')
         return view(request, *args, **kwargs)
     return wrapper
@@ -27,6 +28,9 @@ def login_required_(view):
 def admin_required(view):
     @wraps(view)
     def wrapper(request, *args, **kwargs):
+        if not login_enabled():
+            # Login is turned off: everyone has full (admin) access.
+            return view(request, *args, **kwargs)
         if not request.user.is_authenticated:
             return redirect('login')
         profile = getattr(request.user, 'profile', None)
@@ -37,8 +41,17 @@ def admin_required(view):
     return wrapper
 
 
+def _is_admin(request):
+    if not login_enabled():
+        return True
+    profile = getattr(request.user, 'profile', None)
+    return bool(profile and profile.is_admin)
+
+
 def _can_edit(request, physicist):
     """Admins edit anyone; a physicist may update their own checklist."""
+    if not login_enabled():
+        return True
     profile = getattr(request.user, 'profile', None)
     if profile is None:
         return False
@@ -48,6 +61,8 @@ def _can_edit(request, physicist):
 
 
 def login_view(request):
+    if not login_enabled():
+        return redirect('dashboard')
     if request.user.is_authenticated:
         return redirect('dashboard')
     if request.method == 'POST':
@@ -125,7 +140,7 @@ def dashboard(request):
         'attention': attention[:25],
         'attention_count': len(attention),
         'today': today,
-        'is_admin': bool(profile and profile.is_admin),
+        'is_admin': _is_admin(request),
         'my_physicist': profile.physicist if profile else None,
     })
 
@@ -135,10 +150,9 @@ def physicist_list(request):
     physicists = Physicist.objects.filter(is_active=True)
     rows = [{'physicist': p, **p.credential_summary(), 'percent': p.percent_complete()}
             for p in physicists]
-    profile = getattr(request.user, 'profile', None)
     return render(request, 'credentialing/physicist_list.html', {
         'rows': rows,
-        'is_admin': bool(profile and profile.is_admin),
+        'is_admin': _is_admin(request),
     })
 
 
@@ -147,14 +161,13 @@ def physicist_detail(request, pk):
     physicist = get_object_or_404(Physicist, pk=pk)
     categories = _grouped_skills(physicist)
     summary = physicist.credential_summary()
-    profile = getattr(request.user, 'profile', None)
     return render(request, 'credentialing/physicist_detail.html', {
         'physicist': physicist,
         'categories': categories,
         'summary': summary,
         'percent': physicist.percent_complete(),
         'can_edit': _can_edit(request, physicist),
-        'is_admin': bool(profile and profile.is_admin),
+        'is_admin': _is_admin(request),
         'status_choices': Credential.STATUS_CHOICES,
         'today': timezone.now().date(),
     })
@@ -195,7 +208,7 @@ def update_credential(request, physicist_pk, skill_pk):
         physicist=physicist, skill=skill,
         defaults={'status': status, 'date_completed': date_completed,
                   'verified_by': verified_by, 'notes': notes,
-                  'updated_by': request.user})
+                  'updated_by': request.user if request.user.is_authenticated else None})
     messages.success(request, f'{skill.name}: {cred.get_status_display()}.')
     return redirect(f"/physicists/{physicist.pk}/#skill-{skill.pk}")
 
@@ -221,13 +234,12 @@ def matrix(request):
         if rows:
             categories.append({'category': cat, 'rows': rows})
 
-    profile = getattr(request.user, 'profile', None)
     return render(request, 'credentialing/matrix.html', {
         'physicists': physicists,
         'categories': categories,
         'all_categories': SkillCategory.objects.all(),
         'category_filter': category_filter,
-        'is_admin': bool(profile and profile.is_admin),
+        'is_admin': _is_admin(request),
     })
 
 
@@ -254,6 +266,22 @@ def matrix_export(request):
                 row.append(labels.get(cred_map.get((p.pk, skill.pk), 'not_started'), ''))
             writer.writerow(row)
     return response
+
+
+# ─── Settings ─────────────────────────────────────────────────────────────────
+
+@admin_required
+def app_settings(request):
+    """App settings page: turn the login requirement on or off."""
+    if request.method == 'POST':
+        enable = request.POST.get('login_required') == '1'
+        set_setting('login_required', enable)
+        if enable:
+            messages.success(request, 'Login is now required — users must sign in.')
+        else:
+            messages.success(request, 'Login turned off — the app is open without signing in.')
+        return redirect('app_settings')
+    return render(request, 'credentialing/settings.html')
 
 
 # ─── Admin management ─────────────────────────────────────────────────────────

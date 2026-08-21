@@ -1,0 +1,44 @@
+{% extends 'credentialing/base.html' %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Settings</h1>
+    <div class="text-muted text-sm mt-1">Application configuration</div>
+  </div>
+</div>
+
+<div class="card" style="max-width:680px;">
+  <div class="card-title">Security</div>
+  <div style="padding:18px;">
+    <div class="flex items-center gap-3" style="justify-content:space-between;flex-wrap:wrap;">
+      <div style="max-width:420px;">
+        <div style="font-weight:600;">Require login</div>
+        <div class="text-muted text-sm mt-1">
+          {% if login_enabled %}
+          Login is currently <span class="badge badge-credentialed">on</span> — users must sign in with a username and password.
+          {% else %}
+          Login is currently <span class="badge badge-expired">off</span> — anyone who can reach the app has full access without signing in.
+          {% endif %}
+        </div>
+      </div>
+      <form method="post">
+        {% csrf_token %}
+        {% if login_enabled %}
+        <input type="hidden" name="login_required" value="0">
+        <button type="submit" class="btn btn-danger">Turn login off</button>
+        {% else %}
+        <input type="hidden" name="login_required" value="1">
+        <button type="submit" class="btn btn-primary">Turn login on</button>
+        {% endif %}
+      </form>
+    </div>
+    {% if not login_enabled and not user.is_authenticated %}
+    <div class="text-muted text-sm" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">
+      Note: you are not signed in right now. Turning login on will immediately send you to the
+      sign-in page, so make sure you know a valid username and password first.
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

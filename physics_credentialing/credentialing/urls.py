@@ -14,4 +14,5 @@ urlpatterns = [
          views.update_credential, name='update_credential'),
     path('matrix/', views.matrix, name='matrix'),
     path('matrix/export/', views.matrix_export, name='matrix_export'),
+    path('settings/', views.app_settings, name='app_settings'),
 ]
