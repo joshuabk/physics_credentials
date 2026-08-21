@@ -81,7 +81,6 @@ font-weight:700;font-size:12.5px;background:rgba(45,212,191,.15);color:var(--tea
     <a href="/" {% if request.path == '/' %}class="active"{% endif %}>Dashboard</a>
     <a href="/physicists/" {% if '/physicists' in request.path %}class="active"{% endif %}>Physicists</a>
     <a href="/matrix/" {% if '/matrix' in request.path %}class="active"{% endif %}>Matrix</a>
-    <a href="/settings/" {% if '/settings' in request.path %}class="active"{% endif %}>Settings</a>
   </div>
   <div class="flex items-center gap-3">
     {% if user.is_authenticated %}

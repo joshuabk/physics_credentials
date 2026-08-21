@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
 from .models import Credential, Physicist, Skill, SkillCategory, UserProfile
-from .site_settings import login_enabled, set_setting
+from .site_settings import login_enabled
 
 STATUS_ORDER = ['credentialed', 'in_progress', 'expired', 'not_started', 'not_applicable']
 
@@ -266,22 +266,6 @@ def matrix_export(request):
                 row.append(labels.get(cred_map.get((p.pk, skill.pk), 'not_started'), ''))
             writer.writerow(row)
     return response
-
-
-# ─── Settings ─────────────────────────────────────────────────────────────────
-
-@admin_required
-def app_settings(request):
-    """App settings page: turn the login requirement on or off."""
-    if request.method == 'POST':
-        enable = request.POST.get('login_required') == '1'
-        set_setting('login_required', enable)
-        if enable:
-            messages.success(request, 'Login is now required — users must sign in.')
-        else:
-            messages.success(request, 'Login turned off — the app is open without signing in.')
-        return redirect('app_settings')
-    return render(request, 'credentialing/settings.html')
 
 
 # ─── Admin management ─────────────────────────────────────────────────────────

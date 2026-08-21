@@ -125,3 +125,9 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 LOGIN_URL = '/login/'
+
+# ─── Login toggle ─────────────────────────────────────────────────────────────
+# Set to True to require users to sign in with a username and password.
+# Set to False to run the app open — no login, everyone has full access.
+# Restart the server after changing this.
+LOGIN_REQUIRED = False
