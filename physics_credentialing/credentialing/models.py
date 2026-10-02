@@ -13,6 +13,8 @@ class Physicist(models.Model):
     email = models.EmailField(unique=True)
     title = models.CharField(max_length=120, blank=True,
                              help_text="e.g. Medical Physicist, Senior Physicist, Chief Physicist")
+    location = models.CharField(max_length=120, blank=True,
+                                help_text="Site or clinic this physicist is based at")
     hire_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 

@@ -1,0 +1,125 @@
+{% extends "credentialing/base.html" %}
+{% block title %}Skills{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Skills</h1>
+    <p class="text-muted text-sm mt-1">Manage the categories and skills on the credentialing checklist</p>
+  </div>
+  {% if selected %}<a href="/skills/add/?category={{ selected.pk }}" class="btn btn-primary">+ Add Skill to {{ selected.name }}</a>{% endif %}
+</div>
+
+<div class="split">
+
+  <!-- ── Left: categories ─────────────────────────────────────── -->
+  <div class="card" style="margin-bottom:0;">
+    <div class="card-title">Categories <span class="text-muted text-sm" style="font-weight:400;">{{ sidebar|length }}</span></div>
+    <ul class="side-list">
+      {% for item in sidebar %}
+      <li><a href="/skills/?category={{ item.category.pk }}{% if show_inactive %}&inactive=1{% endif %}" {% if item.is_selected %}class="active"{% endif %}>
+        <span>{{ item.category.name }}</span>
+        <span class="count">{{ item.active_count }}{% if item.total_count != item.active_count %}<span style="opacity:.6;">/{{ item.total_count }}</span>{% endif %}</span>
+      </a></li>
+      {% empty %}
+      <li class="empty-state" style="padding:14px;">No categories yet.</li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="/skills/categories/add/" style="padding:12px 14px;border-top:1px solid var(--border);">{% csrf_token %}
+      <label class="text-muted text-sm">New category</label>
+      <div class="flex gap-2" style="margin-top:5px;">
+        <input name="name" class="form-control" placeholder="Category name" required>
+        <button type="submit" class="btn btn-ghost btn-sm">Add</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ── Right: selected category ─────────────────────────────── -->
+  <div>
+  {% if selected %}
+    <div class="card">
+      <div class="cat-header flex items-center gap-2" style="justify-content:space-between;flex-wrap:wrap;">
+        <form method="post" action="/skills/categories/{{ selected.pk }}/rename/" class="flex items-center gap-2">{% csrf_token %}
+          <input name="name" value="{{ selected.name }}" class="form-control" style="width:280px;font-weight:700;padding:5px 9px;" required>
+          <button type="submit" class="btn btn-ghost btn-sm">Rename</button>
+        </form>
+        <div class="flex items-center gap-2">
+          <span class="text-muted text-sm" style="font-weight:400;margin-right:4px;">position</span>
+          <form method="post" action="/skills/categories/{{ selected.pk }}/move/up/">{% csrf_token %}<button class="btn btn-ghost btn-icon" title="Move category up" {% if selected_is_first %}disabled{% endif %}>&#9650;</button></form>
+          <form method="post" action="/skills/categories/{{ selected.pk }}/move/down/">{% csrf_token %}<button class="btn btn-ghost btn-icon" title="Move category down" {% if selected_is_last %}disabled{% endif %}>&#9660;</button></form>
+          {% if not selected_total %}
+          <form method="post" action="/skills/categories/{{ selected.pk }}/delete/" style="margin-left:8px;" onsubmit="return confirm('Delete the empty category \'{{ selected.name|escapejs }}\'?')">{% csrf_token %}
+            <button class="btn btn-danger btn-sm">Delete Category</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2" style="padding:10px 18px;border-bottom:1px solid var(--border);justify-content:space-between;flex-wrap:wrap;">
+        <span class="text-muted text-sm">{{ skill_count }} skill{{ skill_count|pluralize }}
+          {% if inactive_count %} · {% if show_inactive %}<a href="/skills/?category={{ selected.pk }}">hide {{ inactive_count }} inactive</a>{% else %}<a href="/skills/?category={{ selected.pk }}&inactive=1">show {{ inactive_count }} inactive</a>{% endif %}{% endif %}
+        </span>
+        <form method="get" action="/skills/add/" class="flex items-center gap-2">
+          <input type="hidden" name="category" value="{{ selected.pk }}">
+          <input name="subcategory" class="form-control" placeholder="New subcategory name" style="width:200px;padding:5px 9px;" required>
+          <button type="submit" class="btn btn-ghost btn-sm">+ Start Subcategory</button>
+        </form>
+      </div>
+
+      {% for g in groups %}
+        {% if g.subcategory %}
+        <div class="sub-header flex items-center" style="justify-content:space-between;">
+          <span>{{ g.subcategory }}</span>
+          <a href="/skills/add/?category={{ selected.pk }}&subcategory={{ g.subcategory|urlencode }}" class="text-muted" style="text-transform:none;letter-spacing:0;font-weight:500;">+ add skill here</a>
+        </div>
+        {% elif groups|length > 1 %}
+        <div class="sub-header" style="color:var(--muted);">General</div>
+        {% endif %}
+        <div class="table-wrap"><table>
+          <tbody>
+          {% for row in g.skills %}
+            <tr id="skill-{{ row.skill.pk }}" {% if not row.skill.is_active %}style="opacity:.55;"{% endif %}>
+              <td style="width:70px;white-space:nowrap;">
+                <div class="flex gap-1" style="gap:3px;">
+                  <form method="post" action="/skills/{{ row.skill.pk }}/move/up/">{% csrf_token %}<button class="btn btn-ghost btn-icon" title="Move up" {% if row.is_first %}disabled{% endif %}>&#9650;</button></form>
+                  <form method="post" action="/skills/{{ row.skill.pk }}/move/down/">{% csrf_token %}<button class="btn btn-ghost btn-icon" title="Move down" {% if row.is_last %}disabled{% endif %}>&#9660;</button></form>
+                </div>
+              </td>
+              <td>
+                <span style="font-weight:500;">{{ row.skill.name }}</span>
+                {% if row.skill.as_applicable %}<span class="text-muted text-sm"> (as applicable)</span>{% endif %}
+                {% if row.skill.renewal_months %}
+                  <span class="badge" style="background:rgba(167,139,250,.12);color:var(--purple);margin-left:6px;">
+                    {% if row.skill.renewal_months == 12 %}annual{% elif row.skill.renewal_months == 3 %}quarterly{% else %}every {{ row.skill.renewal_months }} mo{% endif %}
+                  </span>
+                {% endif %}
+                {% if not row.skill.is_active %}<span class="badge badge-not_started" style="margin-left:6px;">inactive</span>{% endif %}
+              </td>
+              <td style="width:170px;" class="text-muted text-sm">
+                {% if row.credential_count %}{{ row.credential_count }} physicist{{ row.credential_count|pluralize }} recorded{% else %}no records{% endif %}
+              </td>
+              <td style="width:150px;">
+                <div class="flex gap-2" style="justify-content:flex-end;">
+                  <a href="/skills/{{ row.skill.pk }}/edit/" class="btn btn-ghost btn-sm">Edit</a>
+                  <form method="post" action="/skills/{{ row.skill.pk }}/delete/"
+                        onsubmit="return confirm('Delete \'{{ row.skill.name|escapejs }}\'?{% if row.credential_count %}\n\nThis will also erase the credential records of {{ row.credential_count }} physicist{{ row.credential_count|pluralize }} for this skill. To keep that history, edit the skill and untick Active instead.{% endif %}')">
+                    {% csrf_token %}
+                    <button class="btn btn-danger btn-sm">Delete</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table></div>
+      {% empty %}
+        <div class="empty-state" style="padding:2rem 18px;text-align:center;">
+          {% if selected_total %}No active skills here — <a href="/skills/?category={{ selected.pk }}&inactive=1">show the inactive ones</a>.{% else %}This category is empty. <a href="/skills/add/?category={{ selected.pk }}">Add its first skill</a>, or delete it.{% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="card"><div class="empty-state" style="text-align:center;padding:2.5rem;">No categories yet — create one on the left to get started.</div></div>
+  {% endif %}
+  </div>
+</div>
+{% endblock %}

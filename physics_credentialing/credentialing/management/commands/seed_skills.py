@@ -237,7 +237,7 @@ class Command(BaseCommand):
             order = 0
             for sub_name, skills in subs:
                 for name, as_applicable, renewal in skills:
-                    order += 10
+                    order += 1
                     _, was_created = Skill.objects.get_or_create(
                         category=cat, subcategory=sub_name, name=name,
                         defaults={'order': order, 'as_applicable': as_applicable,

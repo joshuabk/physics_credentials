@@ -20,7 +20,7 @@
 <div class="card">
   <div class="card-title">Group Progress</div>
   <div class="table-wrap"><table>
-    <thead><tr><th>Physicist</th><th>Credentialed</th><th>In Progress</th><th>Not Started</th><th>Expired</th><th style="width:180px;">Completion</th></tr></thead>
+    <thead><tr><th>Physicist</th><th>Credentialed</th><th>In Progress</th><th>Expired</th></tr></thead>
     <tbody>
     {% for s in summaries %}
       <tr>
@@ -31,15 +31,10 @@
         </div></td>
         <td style="font-family:'DM Mono',monospace;color:var(--green);">{{ s.credentialed }}</td>
         <td style="font-family:'DM Mono',monospace;color:var(--blue);">{{ s.in_progress }}</td>
-        <td style="font-family:'DM Mono',monospace;color:var(--muted);">{{ s.not_started }}</td>
         <td>{% if s.expired %}<span class="badge badge-expired">{{ s.expired }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
-        <td><div class="flex items-center gap-2">
-          <div class="progress-wrap" style="flex:1;"><div class="progress-bar {% if s.percent >= 90 %}green{% elif s.percent >= 50 %}{% else %}amber{% endif %}" style="width:{{ s.percent }}%"></div></div>
-          <span style="font-family:'DM Mono',monospace;font-size:12.5px;">{{ s.percent }}%</span>
-        </div></td>
       </tr>
     {% empty %}
-      <tr><td colspan="6" class="empty-state" style="text-align:center;padding:2rem;">No physicists yet.{% if is_admin %} <a href="/physicists/add/">Add one</a>.{% endif %}</td></tr>
+      <tr><td colspan="4" class="empty-state" style="text-align:center;padding:2rem;">No physicists yet.{% if is_admin %} <a href="/physicists/add/">Add one</a>.{% endif %}</td></tr>
     {% endfor %}
     </tbody>
   </table></div>
@@ -59,7 +54,7 @@
         <td>{% if a.kind == 'expired' %}<span class="badge badge-expired">Expired</span>{% else %}<span class="badge badge-expiring">Expiring soon</span>{% endif %}</td>
       </tr>
     {% empty %}
-      <tr><td colspan="5" class="empty-state" style="text-align:center;padding:1.6rem;">Nothing due — all recurring trainings are current. ✓</td></tr>
+      <tr><td colspan="4" class="empty-state" style="text-align:center;padding:1.6rem;">Nothing due — all recurring trainings are current. ✓</td></tr>
     {% endfor %}
     </tbody>
   </table></div>

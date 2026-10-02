@@ -1,20 +1,50 @@
 {% extends "credentialing/base.html" %}
-{% block title %}Add Physicist{% endblock %}
+{% block title %}{% if physicist %}Edit {{ physicist }}{% else %}Add Physicist{% endif %}{% endblock %}
 {% block content %}
-<div class="page-header"><h1>Add Physicist</h1></div>
-<div class="card" style="max-width:520px;padding:24px;">
+<div class="page-header">
+  <div>
+    <h1>{% if physicist %}Edit Physicist{% else %}Add Physicist{% endif %}</h1>
+    {% if physicist %}<p class="text-muted text-sm mt-1">{{ physicist }}</p>{% endif %}
+  </div>
+</div>
+<div class="card" style="max-width:560px;padding:24px;">
   <form method="post">{% csrf_token %}
-    <label class="text-muted text-sm">First name</label>
-    <input name="first_name" class="form-control" style="margin:5px 0 14px;" required>
-    <label class="text-muted text-sm">Last name</label>
-    <input name="last_name" class="form-control" style="margin:5px 0 14px;" required>
+    <div class="flex gap-3" style="margin-bottom:14px;">
+      <div style="flex:1;">
+        <label class="text-muted text-sm">First name</label>
+        <input name="first_name" class="form-control" value="{{ v.first_name }}" style="margin-top:5px;" required autofocus>
+      </div>
+      <div style="flex:1;">
+        <label class="text-muted text-sm">Last name</label>
+        <input name="last_name" class="form-control" value="{{ v.last_name }}" style="margin-top:5px;" required>
+      </div>
+    </div>
+
     <label class="text-muted text-sm">Email</label>
-    <input name="email" type="email" class="form-control" style="margin:5px 0 14px;" required>
+    <input name="email" type="email" class="form-control" value="{{ v.email }}" style="margin:5px 0 14px;" required>
+
     <label class="text-muted text-sm">Title</label>
-    <input name="title" class="form-control" placeholder="Medical Physicist" style="margin:5px 0 20px;">
+    <input name="title" class="form-control" value="{{ v.title }}" placeholder="Medical Physicist" style="margin:5px 0 14px;">
+
+    <label class="text-muted text-sm">Location <span style="opacity:.7;">(site or clinic)</span></label>
+    <input name="location" list="location-options" class="form-control" value="{{ v.location }}" placeholder="e.g. Main Campus, North Clinic" style="margin:5px 0 14px;" autocomplete="off">
+    <datalist id="location-options">
+      {% for loc in locations %}<option value="{{ loc }}">{% endfor %}
+    </datalist>
+
+    <label class="text-muted text-sm">Hire date</label>
+    <input name="hire_date" type="date" class="form-control" value="{{ v.hire_date }}" style="margin:5px 0 {% if physicist %}14px{% else %}20px{% endif %};">
+
+    {% if physicist %}
+    <label class="flex items-center gap-2" style="margin-bottom:20px;cursor:pointer;">
+      <input type="checkbox" name="is_active" value="1" {% if v.is_active %}checked{% endif %}>
+      <span>Active <span class="text-muted text-sm">— shown on the dashboard, physicist list, and matrix</span></span>
+    </label>
+    {% endif %}
+
     <div class="flex gap-2">
-      <button type="submit" class="btn btn-primary">Add Physicist</button>
-      <a href="/physicists/" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-primary">{% if physicist %}Save Changes{% else %}Add Physicist{% endif %}</button>
+      <a href="{% if physicist %}/physicists/{{ physicist.pk }}/{% else %}/physicists/{% endif %}" class="btn btn-ghost">Cancel</a>
     </div>
   </form>
 </div>

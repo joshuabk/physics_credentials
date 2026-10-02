@@ -1,0 +1,54 @@
+{% extends "credentialing/base.html" %}
+{% block title %}{% if skill %}Edit Skill{% else %}Add Skill{% endif %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{% if skill %}Edit Skill{% else %}Add Skill{% endif %}</h1>
+    {% if skill %}<p class="text-muted text-sm mt-1">{{ skill.category.name }}{% if skill.subcategory %} / {{ skill.subcategory }}{% endif %}</p>{% endif %}
+  </div>
+</div>
+<div class="card" style="max-width:560px;padding:24px;">
+  <form method="post">{% csrf_token %}
+    <label class="text-muted text-sm">Skill name</label>
+    <input name="name" class="form-control" value="{{ v.name }}" style="margin:5px 0 14px;" required autofocus>
+
+    <label class="text-muted text-sm">Category</label>
+    <select name="category" class="form-control" style="width:100%;margin:5px 0 6px;">
+      <option value="">— choose a category —</option>
+      {% for c in categories %}
+      <option value="{{ c.pk }}" {% if v.category == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+    <input name="new_category" class="form-control" value="{{ v.new_category }}" placeholder="…or type a new category name" style="margin:0 0 14px;">
+
+    <label class="text-muted text-sm">Subcategory <span style="opacity:.7;">(optional grouping, e.g. "Daily QA")</span></label>
+    <input name="subcategory" list="subcategory-options" class="form-control" value="{{ v.subcategory }}" style="margin:5px 0 14px;" autocomplete="off">
+    <datalist id="subcategory-options">{% for sc in subcategories %}<option value="{{ sc }}">{% endfor %}</datalist>
+
+    <div class="flex gap-3" style="margin-bottom:14px;">
+      <div style="flex:1;">
+        <label class="text-muted text-sm">Order within category</label>
+        <input name="order" type="number" min="0" class="form-control" value="{{ v.order }}" placeholder="blank = last" style="margin-top:5px;">
+      </div>
+      <div style="flex:1;">
+        <label class="text-muted text-sm">Renewal (months)</label>
+        <input name="renewal_months" type="number" min="1" class="form-control" value="{{ v.renewal_months }}" placeholder="blank = never expires" style="margin-top:5px;">
+      </div>
+    </div>
+
+    <label class="flex items-center gap-2" style="margin-bottom:10px;cursor:pointer;">
+      <input type="checkbox" name="as_applicable" value="1" {% if v.as_applicable %}checked{% endif %}>
+      <span>As applicable <span class="text-muted text-sm">— only some physicists need this (e.g. Gamma Knife)</span></span>
+    </label>
+    <label class="flex items-center gap-2" style="margin-bottom:20px;cursor:pointer;">
+      <input type="checkbox" name="is_active" value="1" {% if v.is_active %}checked{% endif %}>
+      <span>Active <span class="text-muted text-sm">— shown on checklists and the matrix</span></span>
+    </label>
+
+    <div class="flex gap-2">
+      <button type="submit" class="btn btn-primary">{% if skill %}Save Changes{% else %}Add Skill{% endif %}</button>
+      <a href="/skills/{% if skill %}?category={{ skill.category.pk }}#skill-{{ skill.pk }}{% elif v.category %}?category={{ v.category }}{% endif %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
