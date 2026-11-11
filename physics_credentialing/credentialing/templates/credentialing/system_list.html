@@ -1,0 +1,65 @@
+{% extends "credentialing/base.html" %}
+{% block title %}Systems{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Treatment Systems</h1>
+    <p class="text-muted text-sm mt-1">Linacs, afterloaders, CT simulators and other systems that skills can be credentialed on separately</p>
+  </div>
+  <a href="/systems/add/" class="btn btn-primary">+ Add System</a>
+</div>
+
+<div class="card" style="padding:14px 18px;">
+  <p class="text-sm" style="line-height:1.55;">
+    <strong>How this works.</strong> On the <a href="/skills/">Skills</a> page, set a skill to <em>“per Linac”</em>, <em>“per HDR Afterloader”</em>, etc.
+    That skill then shows one checkbox for every active system of that type on each physicist's checklist — e.g. “Daily QA” checked off separately on the TrueBeam and the Synergy.
+    Skills left as a single checkbox are unaffected. Retiring a system hides its checkboxes but keeps the history; deleting it erases them.
+  </p>
+</div>
+
+{% for g in groups %}
+<div class="card">
+  <div class="cat-header flex items-center" style="justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <span>{{ g.label }} <span class="text-muted text-sm" style="font-weight:400;">{{ g.active_count }} active</span></span>
+    <a href="/systems/add/?type={{ g.code }}" class="btn btn-ghost btn-sm">+ Add {{ g.label }}</a>
+  </div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>System</th><th>Manufacturer</th><th>Location</th><th>Records</th><th></th></tr></thead>
+    <tbody>
+    {% for s in g.systems %}
+      <tr {% if not s.is_active %}style="opacity:.55;"{% endif %}>
+        <td><span style="font-weight:500;">{{ s.name }}</span>{% if not s.is_active %} <span class="badge badge-not_started" style="margin-left:6px;">retired</span>{% endif %}</td>
+        <td class="text-muted">{{ s.manufacturer|default:"—" }}</td>
+        <td class="text-muted">{{ s.location|default:"all sites" }}</td>
+        <td class="text-muted text-sm">{% if s.credential_count %}{{ s.credential_count }} credential{{ s.credential_count|pluralize }}{% else %}none{% endif %}</td>
+        <td style="width:260px;">
+          <div class="flex gap-2" style="justify-content:flex-end;">
+            <a href="/systems/{{ s.pk }}/edit/" class="btn btn-ghost btn-sm">Edit</a>
+            <form method="post" action="/systems/{{ s.pk }}/toggle/">{% csrf_token %}
+              <button class="btn btn-ghost btn-sm">{% if s.is_active %}Retire{% else %}Restore{% endif %}</button></form>
+            <form method="post" action="/systems/{{ s.pk }}/delete/"
+                  onsubmit="return confirm('Delete {{ s|escapejs }}?{% if s.credential_count %}\n\nThis erases {{ s.credential_count }} credential record{{ s.credential_count|pluralize }} on this system. To keep that history, Retire it instead.{% endif %}')">
+              {% csrf_token %}<button class="btn btn-danger btn-sm">Delete</button></form>
+          </div>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5" class="empty-state" style="padding:1.2rem 18px;">
+        No {{ g.label }} systems yet, but {{ g.skills|length }} skill{{ g.skills|length|pluralize }} {{ g.skills|length|pluralize:"is,are" }} set to “per {{ g.label }}” — those skills show no checkboxes until you <a href="/systems/add/?type={{ g.code }}">add one</a>.
+      </td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% if g.skills %}
+  <div style="padding:10px 18px;border-top:1px solid var(--border);" class="text-sm">
+    <span class="text-muted">Credentialed per {{ g.label }} ({{ g.skills|length }}):</span>
+    {% for sk in g.skills %}<a href="/skills/{{ sk.pk }}/edit/" style="color:var(--text);text-decoration:none;">{{ sk.name }}</a>{% if not forloop.last %}<span class="text-muted"> · </span>{% endif %}{% endfor %}
+  </div>
+  {% else %}
+  <div style="padding:10px 18px;border-top:1px solid var(--border);" class="text-muted text-sm">No skills are set to “per {{ g.label }}” yet — edit a skill on the <a href="/skills/">Skills</a> page to use these systems.</div>
+  {% endif %}
+</div>
+{% empty %}
+<div class="card"><div class="empty-state" style="text-align:center;padding:2.5rem;">No systems yet. <a href="/systems/add/">Add your first system</a> — for example a Varian TrueBeam (Linac) or a Varian Bravos (HDR Afterloader).</div></div>
+{% endfor %}
+{% endblock %}

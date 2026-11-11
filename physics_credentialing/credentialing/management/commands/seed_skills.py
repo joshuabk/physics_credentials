@@ -140,6 +140,7 @@ CHECKLIST = [
             ("Breast entrance on skin", False, None),
             ("Billing Cont Physics", False, None),
             ("Logfile troubleshooting", False, None),
+            ("TG51 Output Calibration email", False, None),
         ]),
     ]),
     ("7. Equipment & Asset Management", [

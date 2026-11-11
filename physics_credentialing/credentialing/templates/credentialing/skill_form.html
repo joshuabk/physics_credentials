@@ -1,4 +1,5 @@
 {% extends "credentialing/base.html" %}
+{% load credentialing_extras %}
 {% block title %}{% if skill %}Edit Skill{% else %}Add Skill{% endif %}{% endblock %}
 {% block content %}
 <div class="page-header">
@@ -35,6 +36,15 @@
         <input name="renewal_months" type="number" min="1" class="form-control" value="{{ v.renewal_months }}" placeholder="blank = never expires" style="margin-top:5px;">
       </div>
     </div>
+
+    <label class="text-muted text-sm">Credential per system</label>
+    <select name="system_type" class="form-control" style="width:100%;margin:5px 0 4px;">
+      <option value="" {% if not v.system_type %}selected{% endif %}>— no, a single checkbox —</option>
+      {% for code, label in system_types %}
+      <option value="{{ code }}" {% if v.system_type == code %}selected{% endif %}>Per {{ label }}{% with n=system_counts|get_item:code %} ({{ n|default:0 }} active){% endwith %}</option>
+      {% endfor %}
+    </select>
+    <p class="text-muted text-sm" style="margin-bottom:14px;">When set, this skill gets a separate checkbox for every active system of that type (e.g. once per linac). Manage the systems on the <a href="/systems/">Systems</a> page.</p>
 
     <label class="flex items-center gap-2" style="margin-bottom:10px;cursor:pointer;">
       <input type="checkbox" name="as_applicable" value="1" {% if v.as_applicable %}checked{% endif %}>

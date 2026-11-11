@@ -4,11 +4,12 @@ from functools import wraps
 
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
+from django.db.models import Count
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
-from .models import Credential, Physicist, Skill, SkillCategory, UserProfile
+from .models import Credential, Physicist, Skill, SkillCategory, TreatmentSystem, UserProfile
 from .site_settings import login_enabled
 
 STATUS_ORDER = ['credentialed', 'in_progress', 'expired', 'not_started', 'not_applicable']
@@ -82,31 +83,70 @@ def logout_view(request):
 
 # ─── Core pages ───────────────────────────────────────────────────────────────
 
-def _grouped_skills(physicist=None):
-    """Categories -> [{'subcategory', 'skills': [{'skill','credential'}]}] structure.
+def _checklist_items(systems_by_type=None):
+    """Every (skill, system) pair on the checklist, in display order.
 
-    When a physicist is given, each skill carries their credential (or None).
+    General skills yield (skill, None); per-system skills yield one pair per
+    active system of their type. A per-system skill with no systems defined
+    yields (skill, None) flagged so the UI can say so.
+    """
+    if systems_by_type is None:
+        systems_by_type = TreatmentSystem.active_by_type()
+    for skill in Skill.objects.filter(is_active=True).select_related('category'):
+        systems = skill.checklist_systems(systems_by_type)
+        if not systems:
+            yield skill, None, True
+            continue
+        for system in systems:
+            yield skill, system, False
+
+
+def _grouped_skills(physicist=None):
+    """Categories -> [{'subcategory', 'skills': [{'skill', 'items': [...]}]}] structure.
+
+    Each skill carries one item per system it is credentialed on (a single item
+    with system=None for general skills). When a physicist is given, each item
+    carries their credential (or None).
     """
     creds = {}
     if physicist is not None:
-        creds = {c.skill_id: c for c in physicist.credentials.select_related('skill')}
+        creds = {(c.skill_id, c.system_id): c
+                 for c in physicist.credentials.select_related('skill', 'system')}
+
+    by_cat = {}
+    for skill, system, missing in _checklist_items():
+        cat_entry = by_cat.setdefault(skill.category_id, {'category': skill.category,
+                                                          'groups': [], 'seen': {}})
+        key = skill.subcategory
+        if key not in cat_entry['seen']:
+            cat_entry['seen'][key] = {'subcategory': key, 'skills': [], 'rows': {}}
+            cat_entry['groups'].append(cat_entry['seen'][key])
+        group = cat_entry['seen'][key]
+        if skill.pk not in group['rows']:
+            group['rows'][skill.pk] = {'skill': skill, 'items': [], 'no_systems': False}
+            group['skills'].append(group['rows'][skill.pk])
+        row = group['rows'][skill.pk]
+        if missing:
+            row['no_systems'] = True
+            continue
+        cred = creds.get((skill.pk, system.pk if system else None))
+        row['items'].append({
+            'system': system,
+            'credential': cred,
+            'status': cred.effective_status if cred else 'not_started',
+        })
 
     categories = []
-    for cat in SkillCategory.objects.prefetch_related('skills'):
-        groups, seen = [], {}
-        for skill in cat.skills.filter(is_active=True):
-            key = skill.subcategory
-            if key not in seen:
-                seen[key] = {'subcategory': key, 'skills': []}
-                groups.append(seen[key])
-            cred = creds.get(skill.pk)
-            seen[key]['skills'].append({
-                'skill': skill,
-                'credential': cred,
-                'status': cred.effective_status if cred else 'not_started',
-            })
-        if groups:
-            categories.append({'category': cat, 'groups': groups})
+    for cat in SkillCategory.objects.all():
+        entry = by_cat.get(cat.pk)
+        if not entry:
+            continue
+        for g in entry['groups']:
+            del g['rows']
+            for row in g['skills']:
+                row['span'] = max(len(row['items']), 1)
+        del entry['seen']
+        categories.append(entry)
     return categories
 
 
@@ -126,7 +166,7 @@ def dashboard(request):
     for c in Credential.objects.filter(status='credentialed', physicist__is_active=True,
                                        skill__is_active=True, skill__renewal_months__isnull=False,
                                        date_completed__isnull=False
-                                       ).select_related('physicist', 'skill'):
+                                       ).select_related('physicist', 'skill', 'system'):
         if c.is_expired:
             attention.append({'credential': c, 'kind': 'expired', 'when': c.expiration_date})
         elif c.expires_soon:
@@ -174,14 +214,27 @@ def physicist_detail(request, pk):
 
 
 @login_required_
-def update_credential(request, physicist_pk, skill_pk):
-    """Inline status update from the checklist page."""
+def update_credential(request, physicist_pk, skill_pk, system_pk=None):
+    """Inline status update from the checklist page.
+
+    system_pk is required for per-system skills and must be omitted for general ones.
+    """
     physicist = get_object_or_404(Physicist, pk=physicist_pk)
     skill = get_object_or_404(Skill, pk=skill_pk)
     if request.method != 'POST':
         return redirect('physicist_detail', pk=physicist.pk)
     if not _can_edit(request, physicist):
         messages.error(request, 'You do not have permission to update this checklist.')
+        return redirect('physicist_detail', pk=physicist.pk)
+
+    system = None
+    if skill.is_per_system:
+        if system_pk is None:
+            messages.error(request, f'"{skill.name}" is credentialed per system — pick a system.')
+            return redirect('physicist_detail', pk=physicist.pk)
+        system = get_object_or_404(TreatmentSystem, pk=system_pk, system_type=skill.system_type)
+    elif system_pk is not None:
+        messages.error(request, f'"{skill.name}" is not credentialed per system.')
         return redirect('physicist_detail', pk=physicist.pk)
 
     status = request.POST.get('status', 'not_started')
@@ -205,40 +258,68 @@ def update_credential(request, physicist_pk, skill_pk):
         date_completed = None
 
     cred, _ = Credential.objects.update_or_create(
-        physicist=physicist, skill=skill,
+        physicist=physicist, skill=skill, system=system,
         defaults={'status': status, 'date_completed': date_completed,
                   'verified_by': verified_by, 'notes': notes,
                   'updated_by': request.user if request.user.is_authenticated else None})
-    messages.success(request, f'{skill.name}: {cred.get_status_display()}.')
-    return redirect(f"/physicists/{physicist.pk}/#skill-{skill.pk}")
+    messages.success(request, f'{cred.label}: {cred.get_status_display()}.')
+    anchor = f"skill-{skill.pk}" if system is None else f"skill-{skill.pk}-sys-{system.pk}"
+    return redirect(f"/physicists/{physicist.pk}/#{anchor}")
+
+
+@login_required_
+def matrix(request):
+    """Skills x physicists grid for the whole group."""
+def _matrix_rows(physicists, system_filter=''):
+    """[(category, [{'skill','system','no_systems','cells'}])] for the matrix and CSV export.
+
+    system_filter (a TreatmentSystem pk) keeps only that system's rows plus general skills.
+    """
+    cred_map = {}
+    for c in Credential.objects.filter(physicist__in=physicists, skill__is_active=True):
+        cred_map[(c.physicist_id, c.skill_id, c.system_id)] = c.effective_status
+
+    by_cat = {}
+    for skill, system, missing in _checklist_items():
+        if system_filter and system is not None and str(system.pk) != system_filter:
+            continue
+        cells = [cred_map.get((p.pk, skill.pk, system.pk if system else None), 'not_started')
+                 for p in physicists]
+        by_cat.setdefault(skill.category_id, []).append(
+            {'skill': skill, 'system': system, 'no_systems': missing, 'cells': cells})
+    return [(cat, by_cat[cat.pk]) for cat in SkillCategory.objects.all() if cat.pk in by_cat]
 
 
 @login_required_
 def matrix(request):
     """Skills x physicists grid for the whole group."""
     physicists = list(Physicist.objects.filter(is_active=True))
-    cred_map = {}
-    for c in Credential.objects.filter(physicist__in=physicists,
-                                       skill__is_active=True).select_related('skill'):
-        cred_map[(c.physicist_id, c.skill_id)] = c.effective_status
-
     category_filter = request.GET.get('category', '')
-    categories = []
-    for cat in SkillCategory.objects.prefetch_related('skills'):
-        if category_filter and str(cat.pk) != category_filter:
-            continue
-        rows = []
-        for skill in cat.skills.filter(is_active=True):
-            cells = [cred_map.get((p.pk, skill.pk), 'not_started') for p in physicists]
-            rows.append({'skill': skill, 'cells': cells})
-        if rows:
-            categories.append({'category': cat, 'rows': rows})
+    system_filter = request.GET.get('system', '')
+
+    # The system dropdown offers only the systems relevant to the chosen
+    # category: the types its per-system skills are credentialed on (e.g.
+    # linacs for Machine QA, afterloaders for Brachytherapy Operations).
+    type_source = Skill.objects.filter(is_active=True).exclude(system_type='')
+    if category_filter.isdigit():
+        type_source = type_source.filter(category_id=category_filter)
+    used_types = set(type_source.values_list('system_type', flat=True))
+    all_systems = list(TreatmentSystem.objects.filter(is_active=True,
+                                                      system_type__in=used_types))
+    if system_filter and not any(str(sy.pk) == system_filter for sy in all_systems):
+        system_filter = ''
+
+    categories = [{'category': cat, 'rows': rows}
+                  for cat, rows in _matrix_rows(physicists, system_filter)
+                  if not category_filter or str(cat.pk) == category_filter]
 
     return render(request, 'credentialing/matrix.html', {
         'physicists': physicists,
         'categories': categories,
         'all_categories': SkillCategory.objects.all(),
+        'all_systems': all_systems,
         'category_filter': category_filter,
+        'system_filter': system_filter,
         'is_admin': _is_admin(request),
     })
 
@@ -247,10 +328,6 @@ def matrix(request):
 def matrix_export(request):
     """CSV export of the full matrix."""
     physicists = list(Physicist.objects.filter(is_active=True))
-    cred_map = {}
-    for c in Credential.objects.filter(physicist__in=physicists, skill__is_active=True):
-        cred_map[(c.physicist_id, c.skill_id)] = c.effective_status
-
     labels = dict(Credential.STATUS_CHOICES)
     labels['expired'] = 'Expired'
 
@@ -258,13 +335,12 @@ def matrix_export(request):
     stamp = timezone.now().strftime('%Y-%m-%d')
     response['Content-Disposition'] = f'attachment; filename="physics_credentialing_{stamp}.csv"'
     writer = csv.writer(response)
-    writer.writerow(['Category', 'Subcategory', 'Skill'] + [str(p) for p in physicists])
-    for cat in SkillCategory.objects.prefetch_related('skills'):
-        for skill in cat.skills.filter(is_active=True):
-            row = [cat.name, skill.subcategory, skill.name]
-            for p in physicists:
-                row.append(labels.get(cred_map.get((p.pk, skill.pk), 'not_started'), ''))
-            writer.writerow(row)
+    writer.writerow(['Category', 'Subcategory', 'Skill', 'System'] + [str(p) for p in physicists])
+    for cat, rows in _matrix_rows(physicists):
+        for r in rows:
+            system_label = str(r['system']) if r['system'] else ('(no systems defined)' if r['no_systems'] else '')
+            writer.writerow([cat.name, r['skill'].subcategory, r['skill'].name, system_label]
+                            + [labels.get(cell, '') for cell in r['cells']])
     return response
 
 
@@ -372,6 +448,7 @@ def _skill_form_context(skill=None, data=None):
         'order': skill.order if skill else '',
         'as_applicable': skill.as_applicable if skill else False,
         'renewal_months': skill.renewal_months if skill and skill.renewal_months else '',
+        'system_type': skill.system_type if skill else '',
         'is_active': skill.is_active if skill else True,
     }
     if data is not None:
@@ -383,6 +460,7 @@ def _skill_form_context(skill=None, data=None):
             'order': data.get('order', '').strip(),
             'as_applicable': bool(data.get('as_applicable')),
             'renewal_months': data.get('renewal_months', '').strip(),
+            'system_type': data.get('system_type', ''),
             'is_active': bool(data.get('is_active')),
         })
     subcategories = (Skill.objects.exclude(subcategory='').order_by('subcategory')
@@ -391,9 +469,16 @@ def _skill_form_context(skill=None, data=None):
         'skill': skill,
         'categories': SkillCategory.objects.all(),
         'subcategories': list(subcategories),
+        'system_types': TreatmentSystem.TYPE_CHOICES,
+        'system_counts': _system_counts(),
         'v': values,
         'is_admin': True,
     }
+
+
+def _system_counts():
+    """{'linac': 3, 'hdr': 1, ...} active systems per type, for the skill form."""
+    return {t: len(v) for t, v in TreatmentSystem.active_by_type().items()}
 
 
 def _parse_skill_post(request, skill=None):
@@ -444,6 +529,10 @@ def _parse_skill_post(request, skill=None):
         except ValueError:
             return None, 'Renewal months must be a whole number greater than 0, or blank.'
 
+    system_type = data.get('system_type', '')
+    if system_type and system_type not in dict(TreatmentSystem.TYPE_CHOICES):
+        return None, 'Unknown system type.'
+
     dup = Skill.objects.filter(category=category, subcategory=subcategory, name=name)
     if skill is not None:
         dup = dup.exclude(pk=skill.pk)
@@ -458,6 +547,7 @@ def _parse_skill_post(request, skill=None):
         'order': order,
         'as_applicable': bool(data.get('as_applicable')),
         'renewal_months': renewal_months,
+        'system_type': system_type,
         'is_active': bool(data.get('is_active')),
     }, None
 
@@ -700,3 +790,131 @@ def delete_category(request, pk):
         cat.delete()
         messages.success(request, f'Deleted category "{name}".')
     return redirect('skill_list')
+
+
+# ─── Treatment system management ──────────────────────────────────────────────
+
+def _system_form_context(system=None, data=None):
+    values = {
+        'name': system.name if system else '',
+        'system_type': system.system_type if system else '',
+        'manufacturer': system.manufacturer if system else '',
+        'location': system.location if system else '',
+        'is_active': system.is_active if system else True,
+    }
+    if data is not None:
+        values.update({k: data.get(k, '').strip()
+                       for k in ('name', 'system_type', 'manufacturer', 'location')})
+        values['is_active'] = bool(data.get('is_active'))
+    locations = set(Physicist.objects.exclude(location='').values_list('location', flat=True))
+    locations |= set(TreatmentSystem.objects.exclude(location='').values_list('location', flat=True))
+    return {
+        'system': system,
+        'v': values,
+        'system_types': TreatmentSystem.TYPE_CHOICES,
+        'locations': sorted(locations),
+        'is_admin': True,
+    }
+
+
+def _parse_system_post(request, system=None):
+    data = request.POST
+    name = data.get('name', '').strip()
+    system_type = data.get('system_type', '').strip()
+    if not name:
+        return None, 'System name is required.'
+    if system_type not in dict(TreatmentSystem.TYPE_CHOICES):
+        return None, 'Choose a system type.'
+    dup = TreatmentSystem.objects.filter(name__iexact=name)
+    if system is not None:
+        dup = dup.exclude(pk=system.pk)
+    if dup.exists():
+        return None, f'A system named "{name}" already exists.'
+    cleaned = {
+        'name': name,
+        'system_type': system_type,
+        'manufacturer': data.get('manufacturer', '').strip(),
+        'location': data.get('location', '').strip(),
+    }
+    if system is not None:
+        cleaned['is_active'] = bool(data.get('is_active'))
+    return cleaned, None
+
+
+@admin_required
+def system_list(request):
+    """Treatment systems grouped by type, with the skills credentialed on each type."""
+    skills_by_type = {}
+    for skill in Skill.objects.filter(is_active=True).exclude(system_type=''):
+        skills_by_type.setdefault(skill.system_type, []).append(skill)
+
+    groups = []
+    for code, label in TreatmentSystem.TYPE_CHOICES:
+        systems = list(TreatmentSystem.objects.filter(system_type=code)
+                       .annotate(credential_count=Count('credentials')))
+        skills = skills_by_type.get(code, [])
+        if systems or skills:
+            groups.append({'code': code, 'label': label, 'systems': systems,
+                           'skills': skills, 'active_count': sum(1 for s in systems if s.is_active)})
+    return render(request, 'credentialing/system_list.html', {
+        'groups': groups,
+        'system_types': TreatmentSystem.TYPE_CHOICES,
+        'is_admin': True,
+    })
+
+
+@admin_required
+def add_system(request):
+    if request.method == 'POST':
+        cleaned, error = _parse_system_post(request)
+        if error:
+            messages.error(request, error)
+            return render(request, 'credentialing/system_form.html',
+                          _system_form_context(data=request.POST))
+        last = TreatmentSystem.objects.filter(system_type=cleaned['system_type']).order_by('-order').first()
+        system = TreatmentSystem.objects.create(order=(last.order + 1) if last else 1, **cleaned)
+        messages.success(request, f'Added {system}. Skills set to "per {system.get_system_type_display()}" '
+                                  f'now have a checkbox for it on every checklist.')
+        return redirect('system_list')
+    ctx = _system_form_context()
+    ctx['v']['system_type'] = request.GET.get('type', '')
+    return render(request, 'credentialing/system_form.html', ctx)
+
+
+@admin_required
+def edit_system(request, pk):
+    system = get_object_or_404(TreatmentSystem, pk=pk)
+    if request.method == 'POST':
+        cleaned, error = _parse_system_post(request, system)
+        if error:
+            messages.error(request, error)
+            return render(request, 'credentialing/system_form.html',
+                          _system_form_context(system, data=request.POST))
+        for field, value in cleaned.items():
+            setattr(system, field, value)
+        system.save()
+        messages.success(request, f'Saved {system}.')
+        return redirect('system_list')
+    return render(request, 'credentialing/system_form.html', _system_form_context(system))
+
+
+@admin_required
+def toggle_system(request, pk):
+    """Retire a system (hides its checkboxes, keeps history) or bring it back."""
+    system = get_object_or_404(TreatmentSystem, pk=pk)
+    if request.method == 'POST':
+        system.is_active = not system.is_active
+        system.save()
+        messages.success(request, f'{system} {"restored" if system.is_active else "retired"}.')
+    return redirect('system_list')
+
+
+@admin_required
+def delete_system(request, pk):
+    """Permanently remove a system and every credential recorded against it."""
+    system = get_object_or_404(TreatmentSystem, pk=pk)
+    if request.method == 'POST':
+        name = str(system)
+        system.delete()
+        messages.success(request, f'Deleted {name}.')
+    return redirect('system_list')

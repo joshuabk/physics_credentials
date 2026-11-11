@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Credential, Physicist, Skill, SkillCategory, UserProfile
+from .models import Credential, Physicist, Skill, SkillCategory, TreatmentSystem, UserProfile
 
 
 @admin.register(Physicist)
@@ -18,16 +18,23 @@ class SkillCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Skill)
 class SkillAdmin(admin.ModelAdmin):
-    list_display = ['name', 'category', 'subcategory', 'as_applicable', 'renewal_months', 'is_active']
-    list_filter = ['category', 'as_applicable', 'is_active']
+    list_display = ['name', 'category', 'subcategory', 'system_type', 'as_applicable', 'renewal_months', 'is_active']
+    list_filter = ['category', 'system_type', 'as_applicable', 'is_active']
     search_fields = ['name', 'subcategory']
 
 
 @admin.register(Credential)
 class CredentialAdmin(admin.ModelAdmin):
-    list_display = ['physicist', 'skill', 'status', 'date_completed', 'verified_by']
-    list_filter = ['status', 'skill__category']
+    list_display = ['physicist', 'skill', 'system', 'status', 'date_completed', 'verified_by']
+    list_filter = ['status', 'skill__category', 'system']
     search_fields = ['physicist__last_name', 'skill__name']
+
+
+@admin.register(TreatmentSystem)
+class TreatmentSystemAdmin(admin.ModelAdmin):
+    list_display = ['name', 'system_type', 'manufacturer', 'location', 'order', 'is_active']
+    list_filter = ['system_type', 'is_active']
+    search_fields = ['name', 'manufacturer', 'location']
 
 
 admin.site.register(UserProfile)

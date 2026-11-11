@@ -48,7 +48,7 @@
     {% for a in attention %}
       <tr>
         <td><a href="/physicists/{{ a.credential.physicist.pk }}/" style="color:var(--text);text-decoration:none;font-weight:500;">{{ a.credential.physicist }}</a></td>
-        <td>{{ a.credential.skill.name }}</td>
+        <td>{{ a.credential.skill.name }}{% if a.credential.system %} <span class="sys-tag">{{ a.credential.system }}</span>{% endif %}</td>
         <td class="text-muted">{{ a.credential.date_completed|date:"M j, Y" }}</td>
         <td style="font-family:'DM Mono',monospace;">{{ a.when|date:"M j, Y" }}</td>
         <td>{% if a.kind == 'expired' %}<span class="badge badge-expired">Expired</span>{% else %}<span class="badge badge-expiring">Expiring soon</span>{% endif %}</td>

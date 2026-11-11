@@ -1,0 +1,49 @@
+{% extends "credentialing/base.html" %}
+{% block title %}{% if system %}Edit System{% else %}Add System{% endif %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{% if system %}Edit System{% else %}Add Treatment System{% endif %}</h1>
+    {% if system %}<p class="text-muted text-sm mt-1">{{ system.get_system_type_display }}</p>{% endif %}
+  </div>
+</div>
+<div class="card" style="max-width:560px;padding:24px;">
+  <form method="post">{% csrf_token %}
+    <label class="text-muted text-sm">System name</label>
+    <input name="name" class="form-control" value="{{ v.name }}" placeholder='e.g. "Varian TrueBeam", "Varian Bravos", "Elekta Synergy"' style="margin:5px 0 14px;" required autofocus>
+
+    <label class="text-muted text-sm">Type</label>
+    <select name="system_type" class="form-control" style="width:100%;margin:5px 0 14px;" required>
+      <option value="">— choose a type —</option>
+      {% for code, label in system_types %}
+      <option value="{{ code }}" {% if v.system_type == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <div class="flex gap-3" style="margin-bottom:14px;">
+      <div style="flex:1;">
+        <label class="text-muted text-sm">Manufacturer <span style="opacity:.7;">(optional)</span></label>
+        <input name="manufacturer" class="form-control" value="{{ v.manufacturer }}" placeholder="Varian, Elekta…" style="margin-top:5px;">
+      </div>
+      <div style="flex:1;">
+        <label class="text-muted text-sm">Location <span style="opacity:.7;">(blank = all sites)</span></label>
+        <input name="location" list="location-options" class="form-control" value="{{ v.location }}" style="margin-top:5px;" autocomplete="off">
+        <datalist id="location-options">{% for loc in locations %}<option value="{{ loc }}">{% endfor %}</datalist>
+      </div>
+    </div>
+    <p class="text-muted text-sm" style="margin:-6px 0 16px;">Leave location blank to credential by model (one “Elekta Synergy” entry covers every Synergy). Add a location only if the same model at two sites should be checked off separately.</p>
+
+    {% if system %}
+    <label class="flex items-center gap-2" style="margin-bottom:20px;cursor:pointer;">
+      <input type="checkbox" name="is_active" value="1" {% if v.is_active %}checked{% endif %}>
+      <span>Active <span class="text-muted text-sm">— shown on checklists and the matrix</span></span>
+    </label>
+    {% endif %}
+
+    <div class="flex gap-2">
+      <button type="submit" class="btn btn-primary">{% if system %}Save Changes{% else %}Add System{% endif %}</button>
+      <a href="/systems/" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

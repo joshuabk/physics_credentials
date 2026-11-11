@@ -25,17 +25,23 @@ class Physicist(models.Model):
         return f"{self.first_name} {self.last_name}"
 
     def credential_summary(self):
-        """Counts by effective status across all active skills."""
-        skills = Skill.objects.filter(is_active=True)
-        creds = {c.skill_id: c for c in self.credentials.select_related('skill')}
+        """Counts by effective status across every checklist item.
+
+        A general skill is one item; a per-system skill is one item for each
+        active treatment system of its type.
+        """
+        creds = {(c.skill_id, c.system_id): c
+                 for c in self.credentials.select_related('skill')}
+        systems_by_type = TreatmentSystem.active_by_type()
         summary = {'credentialed': 0, 'in_progress': 0, 'not_started': 0,
                    'not_applicable': 0, 'expired': 0, 'total': 0}
-        for s in skills:
-            c = creds.get(s.pk)
-            status = c.effective_status if c else 'not_started'
-            summary[status] += 1
-            if status != 'not_applicable':
-                summary['total'] += 1
+        for s in Skill.objects.filter(is_active=True):
+            for system in s.checklist_systems(systems_by_type):
+                c = creds.get((s.pk, system.pk if system else None))
+                status = c.effective_status if c else 'not_started'
+                summary[status] += 1
+                if status != 'not_applicable':
+                    summary['total'] += 1
         return summary
 
     def percent_complete(self):
@@ -43,6 +49,47 @@ class Physicist(models.Model):
         if s['total'] == 0:
             return 0
         return round(100 * s['credentialed'] / s['total'])
+
+
+class TreatmentSystem(models.Model):
+    """A treatment or imaging system that skills can be credentialed against.
+
+    Model-level by default ("Varian Bravos", "Elekta Synergy"); add a location
+    when the same model at two sites should be credentialed separately.
+    """
+    TYPE_CHOICES = [
+        ('linac', 'Linac'),
+        ('hdr', 'HDR Afterloader'),
+        ('ldr', 'LDR / Seed Program'),
+        ('ct', 'CT Simulator'),
+        ('gk', 'Gamma Knife'),
+        ('mrl', 'MR-Linac'),
+        ('tps', 'Treatment Planning System'),
+        ('other', 'Other'),
+    ]
+
+    name = models.CharField(max_length=150, unique=True,
+                            help_text='e.g. "Varian TrueBeam", "Varian Bravos", "Elekta Synergy"')
+    system_type = models.CharField(max_length=10, choices=TYPE_CHOICES)
+    manufacturer = models.CharField(max_length=100, blank=True)
+    location = models.CharField(max_length=120, blank=True,
+                                help_text="Leave blank if this entry covers every site")
+    order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['system_type', 'order', 'name']
+
+    def __str__(self):
+        return f"{self.name} ({self.location})" if self.location else self.name
+
+    @classmethod
+    def active_by_type(cls):
+        """{'linac': [systems...], 'hdr': [...]} for every active system."""
+        grouped = {}
+        for s in cls.objects.filter(is_active=True):
+            grouped.setdefault(s.system_type, []).append(s)
+        return grouped
 
 
 class SkillCategory(models.Model):
@@ -70,6 +117,10 @@ class Skill(models.Model):
         null=True, blank=True,
         help_text="If set, the credential expires this many months after completion "
                   "(12 = annual training, 3 = quarterly). Blank = never expires.")
+    system_type = models.CharField(
+        max_length=10, blank=True, choices=TreatmentSystem.TYPE_CHOICES,
+        help_text="If set, this skill is credentialed separately on each active system of "
+                  "this type (e.g. once per linac). Blank = a single checkbox.")
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -78,6 +129,18 @@ class Skill(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def is_per_system(self):
+        return bool(self.system_type)
+
+    def checklist_systems(self, systems_by_type=None):
+        """The systems this skill is checked off against: [None] for a general skill."""
+        if not self.system_type:
+            return [None]
+        if systems_by_type is None:
+            systems_by_type = TreatmentSystem.active_by_type()
+        return list(systems_by_type.get(self.system_type, []))
 
 
 class Credential(models.Model):
@@ -90,6 +153,9 @@ class Credential(models.Model):
 
     physicist = models.ForeignKey(Physicist, on_delete=models.CASCADE, related_name='credentials')
     skill = models.ForeignKey(Skill, on_delete=models.CASCADE, related_name='credentials')
+    system = models.ForeignKey(TreatmentSystem, on_delete=models.CASCADE, null=True, blank=True,
+                               related_name='credentials',
+                               help_text="Set for per-system skills; blank for general skills")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='not_started')
     date_completed = models.DateField(null=True, blank=True)
     verified_by = models.CharField(max_length=150, blank=True,
@@ -100,11 +166,16 @@ class Credential(models.Model):
                                    related_name='credential_updates')
 
     class Meta:
-        ordering = ['skill__category__order', 'skill__order']
-        unique_together = [('physicist', 'skill')]
+        ordering = ['skill__category__order', 'skill__order', 'system__order']
+        unique_together = [('physicist', 'skill', 'system')]
 
     def __str__(self):
-        return f"{self.physicist} — {self.skill} ({self.get_status_display()})"
+        return f"{self.physicist} — {self.label} ({self.get_status_display()})"
+
+    @property
+    def label(self):
+        """Skill name, with the system appended for per-system credentials."""
+        return f"{self.skill.name} · {self.system}" if self.system_id else self.skill.name
 
     @property
     def expiration_date(self):

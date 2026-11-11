@@ -87,6 +87,7 @@
               <td>
                 <span style="font-weight:500;">{{ row.skill.name }}</span>
                 {% if row.skill.as_applicable %}<span class="text-muted text-sm"> (as applicable)</span>{% endif %}
+                {% if row.skill.is_per_system %}<span class="sys-tag type" style="margin-left:6px;">per {{ row.skill.get_system_type_display }}</span>{% endif %}
                 {% if row.skill.renewal_months %}
                   <span class="badge" style="background:rgba(167,139,250,.12);color:var(--purple);margin-left:6px;">
                     {% if row.skill.renewal_months == 12 %}annual{% elif row.skill.renewal_months == 3 %}quarterly{% else %}every {{ row.skill.renewal_months }} mo{% endif %}

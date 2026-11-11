@@ -26,13 +26,19 @@
 </style>
 
 <div class="page-header">
-  <div><h1>Credentialing Matrix</h1><p class="text-muted text-sm mt-1">Skills × physicists at a glance</p></div>
+  <div><h1>Credentialing Matrix</h1><p class="text-muted text-sm mt-1">Skills × physicists at a glance — per-system skills show one row per system</p></div>
   <div class="flex gap-2">
     <form method="get" class="flex gap-2">
-      <select name="category" class="form-control">
+      <select name="category" class="form-control" onchange="this.form.submit()">
         <option value="">All categories</option>
         {% for c in all_categories %}<option value="{{ c.pk }}" {% if category_filter == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
       </select>
+      {% if all_systems %}
+      <select name="system" class="form-control" onchange="this.form.submit()">
+        <option value="">All systems</option>
+        {% for s in all_systems %}<option value="{{ s.pk }}" {% if system_filter == s.pk|stringformat:"s" %}selected{% endif %}>{{ s }} · {{ s.get_system_type_display }}</option>{% endfor %}
+      </select>
+      {% endif %}
       <button type="submit" class="btn btn-ghost">Filter</button>
     </form>
     <a href="/matrix/export/" class="btn btn-primary">Export CSV</a>
@@ -68,8 +74,9 @@
         <tr class="cat-row"><td colspan="{{ physicists|length|add:'1' }}"><span>{{ c.category.name }}</span></td></tr>
         {% for row in c.rows %}
         <tr>
-          <td class="skill-c">{% if row.skill.subcategory %}<span class="text-muted text-sm">{{ row.skill.subcategory }} · </span>{% endif %}{{ row.skill.name }}</td>
-          {% for cell in row.cells %}<td class="cell"><span class="dot dot-{{ cell }}"></span></td>{% endfor %}
+          <td class="skill-c">{% if row.skill.subcategory %}<span class="text-muted text-sm">{{ row.skill.subcategory }} · </span>{% endif %}{{ row.skill.name }}
+            {% if row.system %}<span class="sys-tag" style="margin-left:6px;">{{ row.system }}</span>{% elif row.no_systems %}<span class="text-muted text-sm" style="margin-left:6px;">(no {{ row.skill.get_system_type_display }} defined)</span>{% endif %}</td>
+          {% for cell in row.cells %}<td class="cell">{% if not row.no_systems %}<span class="dot dot-{{ cell }}"></span>{% endif %}</td>{% endfor %}
         </tr>
         {% endfor %}
         {% endfor %}
