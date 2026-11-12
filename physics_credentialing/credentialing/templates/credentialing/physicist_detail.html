@@ -18,12 +18,21 @@
   </div>
 </div>
 
+<div class="flex items-center gap-2" style="margin-bottom:1rem;flex-wrap:wrap;">
+  <label for="cat-filter" class="text-muted text-sm">Skill type</label>
+  <select id="cat-filter" class="form-control" style="width:auto;min-width:260px;padding:6px 10px;">
+    <option value="">All skill types</option>
+    {% for c in categories %}<option value="{{ c.category.pk }}">{{ c.category.name }}</option>{% endfor %}
+    <option value="training">Only skills with a training record</option>
+  </select>
+</div>
+
 {% if not can_edit %}
 <p class="text-muted text-sm" style="margin-bottom:1rem;">Read-only view — only administrators or {{ physicist.first_name }} can update this checklist.</p>
 {% endif %}
 
 {% for c in categories %}
-<div class="card">
+<div class="card cat-card" data-cat="{{ c.category.pk }}">
   <div class="cat-header">{{ c.category.name }}</div>
   {% for g in c.groups %}
     {% if g.subcategory %}<div class="sub-header">{{ g.subcategory }}</div>{% endif %}
@@ -31,14 +40,14 @@
       <tbody>
       {% for row in g.skills %}
         {% if row.no_systems %}
-        <tr id="skill-{{ row.skill.pk }}">
+        <tr data-skill="{{ row.skill.pk }}" id="skill-{{ row.skill.pk }}">
           <td style="width:34%;"><span style="font-weight:500;">{{ row.skill.name }}</span>
             <span class="sys-tag type" style="margin-left:6px;">per {{ row.skill.get_system_type_display }}</span></td>
           <td colspan="4" class="text-muted text-sm">No active {{ row.skill.get_system_type_display }} systems defined{% if is_admin %} — <a href="/systems/add/?type={{ row.skill.system_type }}">add one</a>{% endif %}.</td>
         </tr>
         {% endif %}
         {% if row.skill.is_per_system and row.items %}
-        <tr id="skill-{{ row.skill.pk }}" class="skill-head">
+        <tr data-skill="{{ row.skill.pk }}" id="skill-{{ row.skill.pk }}" class="skill-head">
           <td colspan="5" style="padding:10px 14px 4px;border-bottom:none;">
             <span style="font-weight:500;">{{ row.skill.name }}</span>
             <span class="sys-tag type" style="margin-left:6px;">per {{ row.skill.get_system_type_display }}</span>
@@ -52,7 +61,7 @@
         </tr>
         {% endif %}
         {% for item in row.items %}
-        <tr id="{% if item.system %}skill-{{ row.skill.pk }}-sys-{{ item.system.pk }}{% else %}skill-{{ row.skill.pk }}{% endif %}"{% if item.system %} class="sys-row{% if not forloop.last %} mid{% endif %}"{% endif %}>
+        <tr data-skill="{{ row.skill.pk }}" id="{% if item.system %}skill-{{ row.skill.pk }}-sys-{{ item.system.pk }}{% else %}skill-{{ row.skill.pk }}{% endif %}"{% if item.system %} class="sys-row{% if not forloop.last %} mid{% endif %}"{% endif %}>
           <td style="width:34%;">
             {% if item.system %}
             <span class="sys-name">{{ item.system }}</span>
@@ -97,6 +106,75 @@
             {% endif %}
           </td>
         </tr>
+        {% with t=item.training %}{% if t %}
+        <tr data-skill="{{ row.skill.pk }}" class="training-row{% if item.system and not forloop.last %} mid{% endif %}">
+          <td colspan="5">
+            <details{% if open_panel == t.anchor %} open{% endif %}>
+              <summary>
+                <span class="tr-label">Training record</span>
+                {% if t.total %}<span class="tr-chip{% if t.done == t.total %} ok{% endif %}">Topics {{ t.done }}/{{ t.total }}</span>{% endif %}
+                {% if t.min_cases %}<span class="tr-chip{% if t.case_count >= t.min_cases %} ok{% endif %}">Cases {{ t.case_count }}/{{ t.min_cases }}</span>
+                {% elif t.case_count %}<span class="tr-chip">{{ t.case_count }} case{{ t.case_count|pluralize }}</span>{% endif %}
+                {% if t.complete and item.status != 'credentialed' and item.status != 'not_applicable' %}<span class="tr-chip ready">Ready for sign-off</span>{% endif %}
+              </summary>
+              <div class="tr-body">
+                {% if row.skill.requirement %}<div class="tr-req">{{ row.skill.requirement|linebreaksbr }}</div>{% endif %}
+                <div class="tr-cols">
+                  {% if t.topics %}
+                  <div class="tr-topics">
+                    <div class="tr-h">Review topics</div>
+                    <form method="post" action="/physicists/{{ physicist.pk }}/skills/{{ row.skill.pk }}/{% if item.system %}systems/{{ item.system.pk }}/{% endif %}checklist/">
+                      {% csrf_token %}
+                      <ul class="topic-list">
+                      {% for tp in t.topics %}
+                        <li style="padding-left:{{ tp.pad }}px;" class="{% if tp.heading %}topic-head{% endif %}">
+                          {% if tp.heading %}{{ tp.item.text }}{% else %}
+                          <label><input type="checkbox" name="topic" value="{{ tp.item.pk }}" {% if tp.tick %}checked{% endif %} {% if not can_edit %}disabled{% endif %}>
+                            <span>{{ tp.item.text }}</span>
+                            {% if tp.tick %}<span class="text-muted tick-date">{{ tp.tick.checked_on|date:"M j" }}</span>{% endif %}</label>
+                          {% endif %}
+                        </li>
+                      {% endfor %}
+                      </ul>
+                      {% if can_edit %}<button type="submit" class="btn btn-ghost btn-sm" style="margin-top:8px;">Save topics</button>{% endif %}
+                    </form>
+                  </div>
+                  {% endif %}
+                  <div class="tr-cases">
+                    <div class="tr-h">Case log{% if t.min_cases %} <span class="text-muted">· minimum {{ t.min_cases }}</span>{% endif %}</div>
+                    {% if t.cases %}
+                    <table class="case-table">
+                      <thead><tr><th>Date</th><th>Type / device</th><th>Patient</th><th>Role</th><th>Performed with</th><th>Notes</th>{% if can_edit %}<th></th>{% endif %}</tr></thead>
+                      <tbody>
+                      {% for c in t.cases %}
+                        <tr>
+                          <td>{{ c.date|date:"M j, Y" }}</td><td>{{ c.case_type|default:"—" }}</td><td>{{ c.patient|default:"—" }}</td>
+                          <td>{{ c.get_role_display }}</td><td>{{ c.performed_with|default:"—" }}</td><td>{{ c.notes|default:"" }}</td>
+                          {% if can_edit %}<td><form method="post" action="/physicists/{{ physicist.pk }}/cases/{{ c.pk }}/delete/" onsubmit="return confirm('Remove this case?');">{% csrf_token %}<button class="btn btn-icon btn-ghost" title="Remove">&times;</button></form></td>{% endif %}
+                        </tr>
+                      {% endfor %}
+                      </tbody>
+                    </table>
+                    {% else %}<p class="text-muted text-sm" style="margin:4px 0 8px;">No cases logged yet.</p>{% endif %}
+                    {% if can_edit %}
+                    <form method="post" action="/physicists/{{ physicist.pk }}/skills/{{ row.skill.pk }}/{% if item.system %}systems/{{ item.system.pk }}/{% endif %}cases/add/" class="case-form">
+                      {% csrf_token %}
+                      <input type="date" name="date" value="{{ today|date:'Y-m-d' }}" class="form-control" required>
+                      <input type="text" name="case_type" placeholder="Type / device / machine" class="form-control">
+                      <input type="text" name="patient" placeholder="Patient ID (optional)" class="form-control">
+                      <select name="role" class="form-control">{% for value, label in role_choices %}<option value="{{ value }}"{% if value == 'proctored' %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+                      <input type="text" name="performed_with" placeholder="Performed with" class="form-control">
+                      <input type="text" name="notes" placeholder="Notes" class="form-control">
+                      <button type="submit" class="btn btn-ghost btn-sm">Log case</button>
+                    </form>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+            </details>
+          </td>
+        </tr>
+        {% endif %}{% endwith %}
         {% endfor %}
       {% endfor %}
       </tbody>
@@ -104,4 +182,45 @@
   {% endfor %}
 </div>
 {% endfor %}
+<script>
+(function () {
+  var sel = document.getElementById('cat-filter');
+  var key = 'catFilter-{{ physicist.pk }}';
+  function apply() {
+    var v = sel.value;
+    document.querySelectorAll('.cat-card').forEach(function (card) {
+      var trained = {};
+      card.querySelectorAll('tr.training-row').forEach(function (tr) { trained[tr.dataset.skill] = true; });
+      var show = !v || card.dataset.cat === v || (v === 'training' && Object.keys(trained).length > 0);
+      card.style.display = show ? '' : 'none';
+      card.querySelectorAll('tr[data-skill]').forEach(function (tr) {
+        tr.style.display = (v === 'training' && !trained[tr.dataset.skill]) ? 'none' : '';
+      });
+      // hide subcategory headings whose table has nothing left to show
+      card.querySelectorAll('.sub-header').forEach(function (h) {
+        var wrap = h.nextElementSibling;
+        var any = wrap && Array.prototype.some.call(wrap.querySelectorAll('tr[data-skill]'),
+          function (tr) { return tr.style.display !== 'none'; });
+        h.style.display = any ? '' : 'none';
+        if (wrap) wrap.style.display = any ? '' : 'none';
+      });
+    });
+  }
+  try { var saved = sessionStorage.getItem(key); if (saved !== null) sel.value = saved; } catch (e) {}
+  if (sel.selectedIndex < 0) sel.value = '';
+  // Coming back to a specific skill after saving: make sure its category is showing
+  var target = location.hash && document.getElementById(location.hash.slice(1));
+  if (target) {
+    var card = target.closest('.cat-card');
+    if (sel.value && sel.value !== 'training' && card && card.dataset.cat !== sel.value) sel.value = card.dataset.cat;
+  }
+  apply();
+  if (target) target.scrollIntoView();
+  sel.addEventListener('change', function () {
+    try { sessionStorage.setItem(key, sel.value); } catch (e) {}
+    apply();
+    window.scrollTo(0, 0);
+  });
+})();
+</script>
 {% endblock %}

@@ -11,7 +11,6 @@
 
 <div class="stats-grid">
   <div class="stat-card"><div class="stat-label">Physicists</div><div class="stat-value">{{ summaries|length }}</div></div>
-  <div class="stat-card"><div class="stat-label">Skills Tracked</div><div class="stat-value">{{ total_skills }}</div></div>
   <div class="stat-card"><div class="stat-label">Needs Attention</div>
     <div class="stat-value" style="color:{% if attention_count %}var(--amber){% else %}var(--green){% endif %};">{{ attention_count }}</div>
     <div class="text-muted text-sm">expired or expiring credentials</div></div>

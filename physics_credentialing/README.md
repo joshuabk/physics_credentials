@@ -39,3 +39,20 @@ matrix (filterable by system), and the CSV export gains a System column. Retirin
 hides its rows but keeps the history; deleting it erases those records. Existing
 single-checkbox credentials are untouched when you change a skill to per-system — the old
 record simply stops being shown. If you later clear the per-system setting, it reappears.
+
+## Training checklists and case logs
+Skills can carry the review topics and case minimums from the *Medical Physics Credentialing*
+reference document. On a physicist's checklist, each such skill (or each system of a
+per-system skill) has a **Training record** row: open it to tick review topics and log cases
+(date, type/device, patient ID, observed / proctored / independent-reviewed, performed with,
+notes). Ticking a topic or logging a case moves a Not Started skill to In Progress; when every
+topic is ticked and the minimum is logged, the row shows **Ready for sign-off** and the
+proctor sets the status to Credentialed as usual.
+
+Edit topics, the requirement text and the case minimum on the skill's **Edit** page: one topic
+per line, indented two spaces to nest under the line above (a line with nested lines shows as
+a heading). Unchanged lines keep their ticks; reworded lines start unticked.
+
+`python manage.py seed_checklists` loads the reference document's content onto the matching
+skills (and adds Breast, Breath Hold and Compression, and HDR Treatment Delivery). It skips
+skills that already have topics; `--replace` overwrites them.

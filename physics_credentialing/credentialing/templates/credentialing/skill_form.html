@@ -46,6 +46,20 @@
     </select>
     <p class="text-muted text-sm" style="margin-bottom:14px;">When set, this skill gets a separate checkbox for every active system of that type (e.g. once per linac). Manage the systems on the <a href="/systems/">Systems</a> page.</p>
 
+    <div style="border-top:1px solid var(--border);margin:6px 0 14px;"></div>
+    <div class="text-sm" style="font-weight:600;margin-bottom:8px;">Training record</div>
+
+    <label class="text-muted text-sm">Requirement &amp; guidance <span style="opacity:.7;">(shown above the checklist)</span></label>
+    <textarea name="requirement" class="form-control" rows="2" style="width:100%;margin:5px 0 10px;" placeholder="e.g. Minimum 4 cases: 2 observed, 2 proctored with a senior physicist">{{ v.requirement }}</textarea>
+
+    <label class="text-muted text-sm">Minimum cases to log</label>
+    <input name="min_cases" type="number" min="1" class="form-control" value="{{ v.min_cases }}" placeholder="blank = no case target" style="display:block;margin:5px 0 10px;width:180px;">
+
+    <label class="text-muted text-sm">Review topics <span style="opacity:.7;">(one per line; indent two spaces to nest under the line above)</span></label>
+    <textarea name="checklist" class="form-control" rows="10" style="width:100%;margin:5px 0 4px;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;" placeholder="Plan check&#10;  Contours and support structures&#10;  Dose grid resolution per modality">{{ v.checklist }}</textarea>
+    <p class="text-muted text-sm" style="margin-bottom:14px;">A line with indented lines under it shows as a heading; the others get a tick box on each physicist's checklist. Reworded lines start unticked.</p>
+    <div style="border-top:1px solid var(--border);margin:0 0 14px;"></div>
+
     <label class="flex items-center gap-2" style="margin-bottom:10px;cursor:pointer;">
       <input type="checkbox" name="as_applicable" value="1" {% if v.as_applicable %}checked{% endif %}>
       <span>As applicable <span class="text-muted text-sm">— only some physicists need this (e.g. Gamma Knife)</span></span>

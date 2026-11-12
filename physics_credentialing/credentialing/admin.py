@@ -1,6 +1,7 @@
 from django.contrib import admin
 
-from .models import Credential, Physicist, Skill, SkillCategory, TreatmentSystem, UserProfile
+from .models import (CaseLog, ChecklistItem, ChecklistProgress, Credential, Physicist, Skill,
+                     SkillCategory, TreatmentSystem, UserProfile)
 
 
 @admin.register(Physicist)
@@ -16,8 +17,15 @@ class SkillCategoryAdmin(admin.ModelAdmin):
     ordering = ['order']
 
 
+class ChecklistItemInline(admin.TabularInline):
+    model = ChecklistItem
+    extra = 0
+    fields = ['order', 'indent', 'text']
+
+
 @admin.register(Skill)
 class SkillAdmin(admin.ModelAdmin):
+    inlines = [ChecklistItemInline]
     list_display = ['name', 'category', 'subcategory', 'system_type', 'as_applicable', 'renewal_months', 'is_active']
     list_filter = ['category', 'system_type', 'as_applicable', 'is_active']
     search_fields = ['name', 'subcategory']
@@ -38,3 +46,13 @@ class TreatmentSystemAdmin(admin.ModelAdmin):
 
 
 admin.site.register(UserProfile)
+
+
+@admin.register(CaseLog)
+class CaseLogAdmin(admin.ModelAdmin):
+    list_display = ['credential', 'date', 'case_type', 'role', 'performed_with']
+    list_filter = ['role', 'credential__skill__category']
+    search_fields = ['credential__physicist__last_name', 'credential__skill__name', 'case_type']
+
+
+admin.site.register(ChecklistProgress)

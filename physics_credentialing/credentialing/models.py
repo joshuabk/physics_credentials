@@ -121,6 +121,13 @@ class Skill(models.Model):
         max_length=10, blank=True, choices=TreatmentSystem.TYPE_CHOICES,
         help_text="If set, this skill is credentialed separately on each active system of "
                   "this type (e.g. once per linac). Blank = a single checkbox.")
+    requirement = models.TextField(
+        blank=True,
+        help_text="Minimum cases, who proctors, and any guidance shown above the checklist "
+                  "(e.g. 'Minimum 4 cases: 2 observed, 2 proctored with a senior physicist').")
+    min_cases = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Number of logged cases needed before sign-off. Blank = no case log target.")
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -141,6 +148,48 @@ class Skill(models.Model):
         if systems_by_type is None:
             systems_by_type = TreatmentSystem.active_by_type()
         return list(systems_by_type.get(self.system_type, []))
+
+    @property
+    def has_training_panel(self):
+        """True when the skill has review topics or a case-log target to track."""
+        return bool(self.requirement or self.min_cases or self.checklist_items.exists())
+
+    def checklist_text(self):
+        """The review topics as editable indented text (two spaces per level)."""
+        return '\n'.join('  ' * i.indent + i.text for i in self.checklist_items.all())
+
+    def set_checklist_from_text(self, text):
+        """Replace the review topics from indented text, one topic per line.
+
+        Indent with two spaces (or a tab) per level; a leading "-", "*" or "•" is
+        ignored. Topics whose wording is unchanged keep their ticks; topics that
+        are removed take their ticks with them.
+        """
+        lines = []
+        for raw in (text or '').replace('\t', '  ').splitlines():
+            if not raw.strip():
+                continue
+            spaces = len(raw) - len(raw.lstrip(' '))
+            body = raw.strip().lstrip('-*\u2022').strip()
+            if body:
+                lines.append((min(spaces // 2, 4), body))
+        existing = list(self.checklist_items.all())
+        unused = list(existing)
+        keep = []
+        for order, (indent, body) in enumerate(lines, start=1):
+            match = next((i for i in unused if i.text == body), None)
+            if match is not None:
+                unused.remove(match)
+                if match.indent != indent or match.order != order:
+                    match.indent, match.order = indent, order
+                    match.save(update_fields=['indent', 'order'])
+                keep.append(match)
+            else:
+                keep.append(ChecklistItem.objects.create(skill=self, text=body,
+                                                         indent=indent, order=order))
+        for item in unused:
+            item.delete()
+        return keep
 
 
 class Credential(models.Model):
@@ -210,6 +259,13 @@ class Credential(models.Model):
             return 'expired'
         return self.status
 
+    def mark_started(self, user=None):
+        """Move a not-started credential to In Progress once training is logged."""
+        if self.status == 'not_started':
+            self.status = 'in_progress'
+            self.updated_by = user
+            self.save(update_fields=['status', 'updated_by', 'updated_at'])
+
 
 class UserProfile(models.Model):
     ROLE_CHOICES = [
@@ -228,3 +284,65 @@ class UserProfile(models.Model):
     @property
     def is_admin(self):
         return self.role == 'admin'
+
+
+class ChecklistItem(models.Model):
+    """A review topic for a skill (e.g. "Dose grid resolution per modality").
+
+    Topics are indented to form an outline; a topic followed by more-indented
+    topics is shown as a heading, and only the lowest-level topics get a tick box.
+    """
+    skill = models.ForeignKey(Skill, on_delete=models.CASCADE, related_name='checklist_items')
+    text = models.CharField(max_length=300)
+    indent = models.PositiveSmallIntegerField(default=0)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['skill', 'order', 'pk']
+
+    def __str__(self):
+        return f"{self.skill.name}: {self.text}"
+
+
+class ChecklistProgress(models.Model):
+    """A ticked review topic on one physicist's credential."""
+    credential = models.ForeignKey(Credential, on_delete=models.CASCADE, related_name='checklist_progress')
+    item = models.ForeignKey(ChecklistItem, on_delete=models.CASCADE, related_name='progress')
+    checked_on = models.DateField(default=datetime.date.today)
+    checked_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name='+')
+
+    class Meta:
+        unique_together = [('credential', 'item')]
+
+    def __str__(self):
+        return f"{self.credential} — {self.item.text}"
+
+
+class CaseLog(models.Model):
+    """One logged training case (plan check, QA session, source exchange...)."""
+    ROLE_CHOICES = [
+        ('observed', 'Observed'),
+        ('proctored', 'Proctored / performed with'),
+        ('reviewed', 'Independent, reviewed'),
+    ]
+
+    credential = models.ForeignKey(Credential, on_delete=models.CASCADE, related_name='cases')
+    date = models.DateField()
+    case_type = models.CharField(max_length=150, blank=True,
+                                 help_text="Plan check type, device, machine, applicator...")
+    patient = models.CharField(max_length=100, blank=True,
+                               help_text="Patient ID or initials, if the case is patient-specific")
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='proctored')
+    performed_with = models.CharField(max_length=150, blank=True,
+                                      help_text="Proctoring or reviewing physicist")
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name='+')
+
+    class Meta:
+        ordering = ['date', 'pk']
+
+    def __str__(self):
+        return f"{self.credential} — {self.date} {self.case_type}"

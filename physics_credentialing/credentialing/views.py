@@ -9,7 +9,8 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
-from .models import Credential, Physicist, Skill, SkillCategory, TreatmentSystem, UserProfile
+from .models import (CaseLog, ChecklistItem, ChecklistProgress, Credential, Physicist, Skill,
+                     SkillCategory, TreatmentSystem, UserProfile)
 from .site_settings import login_enabled
 
 STATUS_ORDER = ['credentialed', 'in_progress', 'expired', 'not_started', 'not_applicable']
@@ -196,10 +197,61 @@ def physicist_list(request):
     })
 
 
+def _item_anchor(skill, system):
+    return f"skill-{skill.pk}" if system is None else f"skill-{skill.pk}-sys-{system.pk}"
+
+
+def _attach_training(categories, physicist):
+    """Add review-topic ticks and logged cases to every checklist item.
+
+    Each item gains 'training': {'topics', 'done', 'total', 'cases', 'case_count',
+    'min_cases', 'anchor'} when its skill has topics, a case target or logged cases.
+    """
+    topics_by_skill = {}
+    for t in ChecklistItem.objects.filter(skill__is_active=True).order_by('skill_id', 'order', 'pk'):
+        topics_by_skill.setdefault(t.skill_id, []).append(t)
+    ticked = {}
+    for p in ChecklistProgress.objects.filter(credential__physicist=physicist):
+        ticked.setdefault(p.credential_id, {})[p.item_id] = p
+    cases = {}
+    for c in CaseLog.objects.filter(credential__physicist=physicist):
+        cases.setdefault(c.credential_id, []).append(c)
+
+    for cat in categories:
+        for g in cat['groups']:
+            for row in g['skills']:
+                skill = row['skill']
+                topics = topics_by_skill.get(skill.pk, [])
+                for item in row['items']:
+                    cred = item['credential']
+                    cred_ticks = ticked.get(cred.pk, {}) if cred else {}
+                    cred_cases = cases.get(cred.pk, []) if cred else []
+                    if not (topics or skill.min_cases or skill.requirement or cred_cases):
+                        item['training'] = None
+                        continue
+                    rows, done, total = [], 0, 0
+                    for i, t in enumerate(topics):
+                        heading = i + 1 < len(topics) and topics[i + 1].indent > t.indent
+                        tick = cred_ticks.get(t.pk)
+                        if not heading:
+                            total += 1
+                            done += bool(tick)
+                        rows.append({'item': t, 'heading': heading, 'tick': tick,
+                                     'pad': 14 + 22 * t.indent})
+                    item['training'] = {
+                        'topics': rows, 'done': done, 'total': total,
+                        'cases': cred_cases, 'case_count': len(cred_cases),
+                        'min_cases': skill.min_cases,
+                        'anchor': _item_anchor(skill, item['system']),
+                        'complete': done == total and len(cred_cases) >= (skill.min_cases or 0),
+                    }
+    return categories
+
+
 @login_required_
 def physicist_detail(request, pk):
     physicist = get_object_or_404(Physicist, pk=pk)
-    categories = _grouped_skills(physicist)
+    categories = _attach_training(_grouped_skills(physicist), physicist)
     summary = physicist.credential_summary()
     return render(request, 'credentialing/physicist_detail.html', {
         'physicist': physicist,
@@ -209,8 +261,114 @@ def physicist_detail(request, pk):
         'can_edit': _can_edit(request, physicist),
         'is_admin': _is_admin(request),
         'status_choices': Credential.STATUS_CHOICES,
+        'role_choices': CaseLog.ROLE_CHOICES,
+        'open_panel': request.GET.get('open', ''),
         'today': timezone.now().date(),
     })
+
+
+def _training_target(request, physicist_pk, skill_pk, system_pk):
+    """Resolve the (physicist, skill, system) a training update is for.
+
+    Returns (physicist, skill, system, error_redirect); error_redirect is set when
+    the request should stop.
+    """
+    physicist = get_object_or_404(Physicist, pk=physicist_pk)
+    skill = get_object_or_404(Skill, pk=skill_pk)
+    back = redirect('physicist_detail', pk=physicist.pk)
+    if request.method != 'POST':
+        return physicist, skill, None, back
+    if not _can_edit(request, physicist):
+        messages.error(request, 'You do not have permission to update this checklist.')
+        return physicist, skill, None, back
+    system = None
+    if skill.is_per_system:
+        if system_pk is None:
+            messages.error(request, f'"{skill.name}" is credentialed per system — pick a system.')
+            return physicist, skill, None, back
+        system = get_object_or_404(TreatmentSystem, pk=system_pk, system_type=skill.system_type)
+    elif system_pk is not None:
+        messages.error(request, f'"{skill.name}" is not credentialed per system.')
+        return physicist, skill, None, back
+    return physicist, skill, system, None
+
+
+def _back_to_panel(physicist, skill, system):
+    anchor = _item_anchor(skill, system)
+    return redirect(f"/physicists/{physicist.pk}/?open={anchor}#{anchor}")
+
+
+def _user(request):
+    return request.user if request.user.is_authenticated else None
+
+
+@login_required_
+def save_checklist(request, physicist_pk, skill_pk, system_pk=None):
+    """Save the ticked review topics for one physicist's skill (and system)."""
+    physicist, skill, system, stop = _training_target(request, physicist_pk, skill_pk, system_pk)
+    if stop:
+        return stop
+    cred, _ = Credential.objects.get_or_create(physicist=physicist, skill=skill, system=system)
+    wanted = set()
+    for raw in request.POST.getlist('topic'):
+        if raw.isdigit():
+            wanted.add(int(raw))
+    valid = set(skill.checklist_items.values_list('pk', flat=True))
+    wanted &= valid
+    current = {p.item_id: p for p in cred.checklist_progress.all()}
+    for item_id, p in current.items():
+        if item_id not in wanted:
+            p.delete()
+    for item_id in wanted - set(current):
+        ChecklistProgress.objects.create(credential=cred, item_id=item_id, checked_by=_user(request))
+    if wanted:
+        cred.mark_started(_user(request))
+    messages.success(request, f'{cred.label}: review topics saved ({len(wanted)} ticked).')
+    return _back_to_panel(physicist, skill, system)
+
+
+@login_required_
+def add_case(request, physicist_pk, skill_pk, system_pk=None):
+    """Log one training case against a physicist's skill (and system)."""
+    physicist, skill, system, stop = _training_target(request, physicist_pk, skill_pk, system_pk)
+    if stop:
+        return stop
+    data = request.POST
+    try:
+        date = datetime.datetime.strptime(data.get('date', '').strip(), '%Y-%m-%d').date()
+    except ValueError:
+        messages.error(request, 'Enter the date of the case.')
+        return _back_to_panel(physicist, skill, system)
+    role = data.get('role', 'proctored')
+    if role not in dict(CaseLog.ROLE_CHOICES):
+        role = 'proctored'
+    cred, _ = Credential.objects.get_or_create(physicist=physicist, skill=skill, system=system)
+    CaseLog.objects.create(
+        credential=cred, date=date, role=role,
+        case_type=data.get('case_type', '').strip()[:150],
+        patient=data.get('patient', '').strip()[:100],
+        performed_with=data.get('performed_with', '').strip()[:150],
+        notes=data.get('notes', '').strip(),
+        created_by=_user(request))
+    cred.mark_started(_user(request))
+    count = cred.cases.count()
+    target = f' of {skill.min_cases}' if skill.min_cases else ''
+    messages.success(request, f'{cred.label}: case logged ({count}{target}).')
+    return _back_to_panel(physicist, skill, system)
+
+
+@login_required_
+def delete_case(request, physicist_pk, case_pk):
+    case = get_object_or_404(CaseLog.objects.select_related('credential__skill', 'credential__system'),
+                             pk=case_pk, credential__physicist_id=physicist_pk)
+    cred = case.credential
+    physicist, skill, system, stop = _training_target(
+        request, physicist_pk, cred.skill_id, cred.system_id)
+    if stop:
+        return stop
+    case.delete()
+    messages.success(request, f'{cred.label}: case removed.')
+    return _back_to_panel(physicist, skill, system)
 
 
 @login_required_
@@ -450,6 +608,9 @@ def _skill_form_context(skill=None, data=None):
         'renewal_months': skill.renewal_months if skill and skill.renewal_months else '',
         'system_type': skill.system_type if skill else '',
         'is_active': skill.is_active if skill else True,
+        'requirement': skill.requirement if skill else '',
+        'min_cases': skill.min_cases if skill and skill.min_cases else '',
+        'checklist': skill.checklist_text() if skill else '',
     }
     if data is not None:
         values.update({
@@ -462,6 +623,9 @@ def _skill_form_context(skill=None, data=None):
             'renewal_months': data.get('renewal_months', '').strip(),
             'system_type': data.get('system_type', ''),
             'is_active': bool(data.get('is_active')),
+            'requirement': data.get('requirement', '').strip(),
+            'min_cases': data.get('min_cases', '').strip(),
+            'checklist': data.get('checklist', ''),
         })
     subcategories = (Skill.objects.exclude(subcategory='').order_by('subcategory')
                      .values_list('subcategory', flat=True).distinct())
@@ -533,6 +697,16 @@ def _parse_skill_post(request, skill=None):
     if system_type and system_type not in dict(TreatmentSystem.TYPE_CHOICES):
         return None, 'Unknown system type.'
 
+    min_raw = data.get('min_cases', '').strip()
+    min_cases = None
+    if min_raw:
+        try:
+            min_cases = int(min_raw)
+            if min_cases <= 0:
+                raise ValueError
+        except ValueError:
+            return None, 'Minimum cases must be a whole number greater than 0, or blank.'
+
     dup = Skill.objects.filter(category=category, subcategory=subcategory, name=name)
     if skill is not None:
         dup = dup.exclude(pk=skill.pk)
@@ -549,6 +723,8 @@ def _parse_skill_post(request, skill=None):
         'renewal_months': renewal_months,
         'system_type': system_type,
         'is_active': bool(data.get('is_active')),
+        'requirement': data.get('requirement', '').strip(),
+        'min_cases': min_cases,
     }, None
 
 
@@ -654,6 +830,7 @@ def add_skill(request):
             return render(request, 'credentialing/skill_form.html',
                           _skill_form_context(data=request.POST))
         skill = Skill.objects.create(**cleaned)
+        skill.set_checklist_from_text(request.POST.get('checklist', ''))
         messages.success(request, f'Added skill "{skill.name}" to {skill.category.name}.')
         return redirect(_skills_url(skill.category, skill))
     ctx = _skill_form_context()
@@ -680,6 +857,7 @@ def edit_skill(request, pk):
         for field, value in cleaned.items():
             setattr(skill, field, value)
         skill.save()
+        skill.set_checklist_from_text(request.POST.get('checklist', ''))
         messages.success(request, f'Saved "{skill.name}".')
         return redirect(_skills_url(skill.category, skill, inactive=not skill.is_active))
     return render(request, 'credentialing/skill_form.html', _skill_form_context(skill))
